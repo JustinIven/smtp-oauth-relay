@@ -2,9 +2,37 @@ import asyncio
 import logging
 import requests
 import base64
+import ssl
+import os
 
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import AuthResult
+
+
+# Load configuration from environment variables
+if (log_level := os.getenv('LOG_LEVEL', 'INFO')).upper() in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+    LOG_LEVEL = log_level.upper()
+else:
+    raise ValueError(f"Invalid LOG_LEVEL: {log_level}")
+
+if (use_tls := os.getenv('USE_TLS', 'True')).lower() in ['true', 'false']:
+    USE_TLS = bool(use_tls)
+else:
+    raise ValueError(f"Invalid USE_TLS: {use_tls}")
+
+if (require_tls := os.getenv('REQUIRE_TLS', 'True')).lower() in ['true', 'false']:
+    REQUIRE_TLS = bool(require_tls)
+else:
+    raise ValueError(f"Invalid REQUIRE_TLS: {require_tls}")
+
+if (server_greeting := os.getenv('SERVER_GREETING', 'Microsoft Graph SMTP OAuth Relay')).strip():
+    SERVER_GREETING = server_greeting
+else:
+    raise ValueError(f"Invalid SERVER_GREETING: {server_greeting}")
+
+
+
+
 
 
 def get_access_token(tenant_id, client_id, client_secret):
@@ -116,15 +144,40 @@ class Handler:
 
 # noinspection PyShadowingNames
 async def amain():
+
+    # load ssl context
+    context = None
+    if USE_TLS:
+        # check if cert and key files exist
+        if not os.path.exists('certs/cert.pem') or not os.path.exists('certs/key.pem'):
+            logging.error("Certificate or key not found")
+            raise FileNotFoundError("Certificate or key not found")
+
+        # load default context
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+
+        # load cert and key
+        try:
+            context.load_cert_chain(certfile='certs/cert.pem', keyfile='certs/key.pem')
+        except ssl.SSLError as e:
+            logging.error(f"Failed to load Certificate or key: {str(e)}")
+            raise
+        except FileNotFoundError as e:
+            logging.error(f"Certificate or key not found: {str(e)}")
+
+
     controller = None
     try:
         controller = Controller(
             Handler(),
             hostname='',
             port=8025,
+            ident=SERVER_GREETING,
             authenticator=Authenticator(),
-            auth_require_tls=False,
-            decode_data=False
+            auth_required=True,
+            auth_require_tls=REQUIRE_TLS,
+            require_starttls=REQUIRE_TLS,
+            tls_context=context
         )
         controller.start()
         logging.info(f"SMTP OAuth relay server started on port 8025")
@@ -136,13 +189,17 @@ async def amain():
 
 
 if __name__ == '__main__':
+    # Setup logging
     logging.basicConfig(
-        level=logging.INFO,
+        level=LOG_LEVEL,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
+
+    # Create event loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
+    # Run main function
     try:
         loop.create_task(amain())
         loop.run_forever()
