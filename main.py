@@ -15,13 +15,13 @@ if (log_level := os.getenv('LOG_LEVEL', 'INFO')).upper() in ['DEBUG', 'INFO', 'W
 else:
     raise ValueError(f"Invalid LOG_LEVEL: {log_level}")
 
-if (use_tls := os.getenv('USE_TLS', 'True')).lower() in ['true', 'false']:
-    USE_TLS = bool(use_tls)
+if (use_tls := os.getenv('USE_TLS', 'true')).lower() in ['true', 'false']:
+    USE_TLS = use_tls.lower() == 'true'
 else:
     raise ValueError(f"Invalid USE_TLS: {use_tls}")
 
-if (require_tls := os.getenv('REQUIRE_TLS', 'True')).lower() in ['true', 'false']:
-    REQUIRE_TLS = bool(require_tls)
+if (require_tls := os.getenv('REQUIRE_TLS', 'true')).lower() in ['true', 'false']:
+    REQUIRE_TLS = require_tls.lower() == 'true'
 else:
     raise ValueError(f"Invalid REQUIRE_TLS: {require_tls}")
 
@@ -29,7 +29,6 @@ if (server_greeting := os.getenv('SERVER_GREETING', 'Microsoft Graph SMTP OAuth 
     SERVER_GREETING = server_greeting
 else:
     raise ValueError(f"Invalid SERVER_GREETING: {server_greeting}")
-
 
 
 
@@ -164,6 +163,11 @@ async def amain():
             raise
         except FileNotFoundError as e:
             logging.error(f"Certificate or key not found: {str(e)}")
+
+    
+    # check if REQUIRE_TLS is set to True and USE_TLS is set to False
+    if REQUIRE_TLS and not USE_TLS:
+        logging.warning("REQUIRE_TLS is set to True but USE_TLS is set to False; TLS won't be enforced")
 
 
     controller = None
