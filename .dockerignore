@@ -3,3 +3,5 @@ __pychache__
 .github
 .devcontainer
 certs
+docs
+README.md
