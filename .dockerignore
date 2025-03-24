@@ -1,7 +1,10 @@
 __pychache__
 .gitignore
+.git
 .github
 .devcontainer
+.dockerignore
 certs
 docs
 README.md
+LICENSE

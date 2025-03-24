@@ -10,28 +10,45 @@ from aiosmtpd.smtp import AuthResult
 
 
 # Load configuration from environment variables
-if (log_level := os.getenv('LOG_LEVEL', 'INFO')).upper() in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
-    LOG_LEVEL = log_level.upper()
-else:
-    raise ValueError(f"Invalid LOG_LEVEL: {log_level}")
+def load_env(name, default=None, sanitize=lambda x: x, valid_values=None, convert=None):
+    value = sanitize(os.getenv(name, default))
+    if valid_values and value not in valid_values:
+        raise ValueError(f"Invalid {name}: {value}")
+    return convert(value) if convert else value
 
-if (use_tls := os.getenv('USE_TLS', 'True')).lower() in ['true', 'false']:
-    USE_TLS = bool(use_tls)
-else:
-    raise ValueError(f"Invalid USE_TLS: {use_tls}")
-
-if (require_tls := os.getenv('REQUIRE_TLS', 'True')).lower() in ['true', 'false']:
-    REQUIRE_TLS = bool(require_tls)
-else:
-    raise ValueError(f"Invalid REQUIRE_TLS: {require_tls}")
-
-if (server_greeting := os.getenv('SERVER_GREETING', 'Microsoft Graph SMTP OAuth Relay')).strip():
-    SERVER_GREETING = server_greeting
-else:
-    raise ValueError(f"Invalid SERVER_GREETING: {server_greeting}")
-
-
-
+# Configuration
+LOG_LEVEL = load_env(
+    name='LOG_LEVEL',
+    default='INFO',
+    valid_values=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+    sanitize=lambda x: x.upper()
+)
+USE_TLS = load_env(
+    name='USE_TLS', 
+    default='true', 
+    valid_values=['true', 'false'], 
+    sanitize=lambda x: x.lower(),
+    convert=lambda x: x == 'true'
+)
+REQUIRE_TLS = load_env(
+    name='REQUIRE_TLS', 
+    default='true', 
+    valid_values=['true', 'false'], 
+    sanitize=lambda x: x.lower(),
+    convert=lambda x: x == 'true'
+)
+SERVER_GREETING = load_env(
+    name='SERVER_GREETING', 
+    default='Microsoft Graph SMTP OAuth Relay'
+)
+TLS_CERT_FILEPATH = load_env(
+    name='TLS_CERT_FILEPATH',
+    default='certs/cert.pem'
+)
+TLS_KEY_FILEPATH = load_env(
+    name='TLS_KEY_FILEPATH',
+    default='certs/key.pem'
+)
 
 
 
@@ -149,7 +166,7 @@ async def amain():
     context = None
     if USE_TLS:
         # check if cert and key files exist
-        if not os.path.exists('certs/cert.pem') or not os.path.exists('certs/key.pem'):
+        if not os.path.exists(path=TLS_CERT_FILEPATH) or not os.path.exists(path=TLS_KEY_FILEPATH):
             logging.error("Certificate or key not found")
             raise FileNotFoundError("Certificate or key not found")
 
@@ -158,7 +175,7 @@ async def amain():
 
         # load cert and key
         try:
-            context.load_cert_chain(certfile='certs/cert.pem', keyfile='certs/key.pem')
+            context.load_cert_chain(certfile=TLS_CERT_FILEPATH, keyfile=TLS_KEY_FILEPATH)
         except ssl.SSLError as e:
             logging.error(f"Failed to load Certificate or key: {str(e)}")
             raise
