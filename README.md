@@ -1,8 +1,8 @@
 # SMTP OAuth Relay
-An SMTP server that acts as a relay between traditional SMTP clients and Microsoft Graph API, using OAuth 2.0 authentication to send emails.
+An SMTP server that acts as a relay between traditional SMTP clients and the Microsoft Graph API, using OAuth 2.0 authentication to send emails.
 
 ## Overview
-This project implements an SMTP server that authenticates using Microsoft Entra ID credentials and sends emails through Microsoft Graph API. It enables applications that only support SMTP to send emails through Microsoft services using modern OAuth authentication methods.
+This project implements an SMTP server that authenticates using application credentials against the Microsoft IdP and sends emails through Microsoft Graph. It enables applications that only support SMTP to send emails through Microsoft services using modern OAuth authentication methods.
 
 ## Getting started
 ### Using Docker (recommended)
@@ -138,7 +138,7 @@ Configure your SMTP client with the following settings:
 ## How it works
 1. The SMTP server accepts connections on port 8025
 2. Clients authenticate using tenant_id:client_id as username and client_secret as password
-3. The server obtains an OAuth token from Microsoft identity platform
+3. The server obtains an OAuth token from the Microsoft identity platform
 4. When an email is received via SMTP, it's converted to a Microsoft Graph API request
 5. The email is sent using the application's permissions
 
