@@ -34,7 +34,7 @@ The SMTP OAuth Relay requires TLS certificates when operating with `USE_TLS=True
 
 ## Usage
 ### Setup in Microsoft Entra ID
-1. Create an application in Microsoft Entra ID with the application permission `Send.Mail`
+1. Create an application in Microsoft Entra ID with the application permission `Mail.Send`
 2. Grant admin consent for the permission
 3. Create an application secret
 4. Note your tenant ID, application (client) ID, and client secret
@@ -69,7 +69,7 @@ $application = Invoke-MgGraphRequest `
                 resourceAppId = "00000003-0000-0000-c000-000000000000" # Microsoft Graph
                 resourceAccess = @(
                     @{ 
-                        id = "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Send.Mail
+                        id = "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Mail.Send
                         type = "Role"
                     }
                 )
@@ -98,7 +98,7 @@ Invoke-MgGraphRequest `
     -Body @{
         principalId = $servicePrincipal.id
         resourceId = "7aeb2b66-3434-4d91-b79e-fe5f94c2634b" # Microsoft Graph Service Principal
-        appRoleId = "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Send.Mail
+        appRoleId = "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Mail.Send
     }
 
 
