@@ -25,6 +25,14 @@ The server can be configured using the following environment variables:
 | USE_TLS         | Enable/disable TLS                                    | True                             |
 | REQUIRE_TLS     | Require TLS for authentication                        | True                             |
 | SERVER_GREETING | SMTP server greeting message                          | Microsoft Graph SMTP OAuth Relay |
+| TLS_CERT_FILEPATH | Path to TLS certificate file                        | certs/cert.pem                   |
+| TLS_KEY_FILEPATH  | Path to TLS private key file                        | certs/key.pem                    |
+| USERNAME_DELIMITER | Delimiter between tenant_id and client_id in username | @                              |
+
+**Notes:**
+- `USE_TLS` and `REQUIRE_TLS` accept `true` or `false` (case-insensitive).
+- `USERNAME_DELIMITER` can be `@`, `:`, or `|`.
+- If you change the delimiter, update your SMTP client username accordingly.
 
 ### Certificate Management
 The SMTP OAuth Relay requires TLS certificates when operating with `USE_TLS=True` (the default). Certificates are expected in the `/usr/src/smtp-relay/certs` directory with these filenames:
@@ -123,6 +131,20 @@ Write-Host "$($application.passwordCredentials[0].secretText)" -ForegroundColor 
 
 </details>
 
+### SMTP Username Format
+The username for authentication must be in the format:
+
+```
+<tenant_id><delimiter><client_id>[.optional_tld]
+```
+
+- `<tenant_id>`: Your Microsoft Entra tenant ID (UUID or base64url-encoded UUID)
+- `<client_id>`: Your application (client) ID (UUID or base64url-encoded UUID)
+- `<delimiter>`: The character set in `USERNAME_DELIMITER` (default: `@`)
+- `[.optional_tld]`: (Optional) A dot and any string (such as a domain or TLD) after the client_id, which will be ignored by the server.
+
+Example: `12345678-1234-1234-1234-123456789abc@abcdefab-1234-5678-abcd-abcdefabcdef.local`
+
 ### SMTP Client Configuration
 Configure your SMTP client with the following settings:
 | Setting   | Value                      |
@@ -146,8 +168,9 @@ Configure your SMTP client with the following settings:
 
 ## Security Considerations
 - Always use TLS in production environments
-- Store client secrets securely
-- Restrict application permissions to only the necessary sender addresses
+- Store client secrets securely and never commit them to source control
+- Restrict application permissions to only the necessary sender addresses using Application Access Policies
+- Monitor logs for failed authentication or sending attempts
 
 ## FAQ
 Q: Can I use this relay with any SMTP client? \
