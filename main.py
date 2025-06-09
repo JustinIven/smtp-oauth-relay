@@ -4,17 +4,19 @@ import requests
 import base64
 import ssl
 import os
+import re
+import uuid
 
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import AuthResult
 
 
 # Load configuration from environment variables
-def load_env(name, default=None, sanitize=lambda x: x, valid_values=None, convert=None):
+def load_env(name, default=None, sanitize=lambda x: x, valid_values=None, convert=lambda x: x):
     value = sanitize(os.getenv(name, default))
     if valid_values and value not in valid_values:
         raise ValueError(f"Invalid {name}: {value}")
-    return convert(value) if convert else value
+    return convert(value)
 
 # Configuration
 LOG_LEVEL = load_env(
@@ -49,7 +51,48 @@ TLS_KEY_FILEPATH = load_env(
     name='TLS_KEY_FILEPATH',
     default='certs/key.pem'
 )
+USERNAME_DELIMITER = load_env(
+    name='USERNAME_DELIMITER',
+    default='@',
+    valid_values=['@', ':', '|']
+)
 
+
+
+def parse_username(username):
+    """
+    Parse the username to extract tenant_id and client_id.
+    The expected format is: tenant_id{USERNAME_DELIMITER}client_id{. optional_tld}
+    """
+    
+    # remove the optional TLD if present
+    if '.' in username:
+        username = username.split('.')[0]
+
+    # Check if username is valid
+    if not username or USERNAME_DELIMITER not in username:
+        raise ValueError(f"Invalid username format. Expected format: tenant_id{USERNAME_DELIMITER}client_id")
+    
+    # Split the username by the delimiter
+    parts = username.split(USERNAME_DELIMITER)
+    if len(parts) != 2:
+        raise ValueError(f"Invalid username format. Expected exactly one '{USERNAME_DELIMITER}' character")
+    
+    # check if parts have a UUID-like format or else base64url decode them
+    uuid_pattern = re.compile(r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$')
+    decoded_parts = []
+    for part in parts:
+        if uuid_pattern.match(part):
+            decoded_parts.append(part)
+            continue  # valid UUID format, no need to decode
+
+        # Attempt to decode as base64url
+        try:
+            decoded_parts.append(str(uuid.UUID(bytes=base64.urlsafe_b64decode(part + '=' * (-len(part) % 4)))))
+        except Exception as e:
+            raise ValueError(f"Invalid base64url encoding in part '{part}'")
+
+    return decoded_parts[0], decoded_parts[1]
 
 
 def get_access_token(tenant_id, client_id, client_secret):
@@ -116,12 +159,12 @@ class Authenticator:
                 
             login_str = auth_data.login.decode("utf-8")
             
-            # Extract tenant_id and client_id from login string
+            # Parse tenant_id and client_id from login string using the configured format
             try:
-                tenant_id, client_id = login_str.split(':')
-            except ValueError:
-                logging.error(f"Invalid login format: Expected 'tenant_id:client_id', got '{login_str}'")
-                return AuthResult(success=False, handled=False, message="535 5.7.8 Invalid login format: Expected 'tenant_id:client_id'")
+                tenant_id, client_id = parse_username(login_str)
+            except ValueError as e:
+                logging.error(str(e))
+                return AuthResult(success=False, handled=False, message=f"535 5.7.8 {str(e)}")
                 
             client_secret = auth_data.password
 
