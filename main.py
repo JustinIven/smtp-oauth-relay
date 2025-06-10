@@ -7,7 +7,7 @@ import os
 import re
 import uuid
 
-from aiosmtpd.controller import Controller
+from custom import CustomController
 from aiosmtpd.smtp import AuthResult
 
 
@@ -177,7 +177,7 @@ class Authenticator:
                 
         except Exception as e:
             logging.exception(f"Unexpected error during authentication: {str(e)}")
-            return AuthResult(success=False, handled=False)
+            return AuthResult(success=False, handled=False, message="554 5.7.0 Unexpected error during authentication")
 
 
 class Handler:
@@ -228,7 +228,7 @@ async def amain():
 
     controller = None
     try:
-        controller = Controller(
+        controller = CustomController(
             Handler(),
             hostname='',
             port=8025,
