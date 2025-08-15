@@ -2,13 +2,14 @@ import asyncio
 import logging
 import requests
 import base64
-import ssl
 import os
 import re
 import uuid
 
 from custom import CustomController
 from aiosmtpd.smtp import AuthResult
+
+import sslContext
 
 
 # Load configuration from environment variables
@@ -21,16 +22,15 @@ def load_env(name, default=None, sanitize=lambda x: x, valid_values=None, conver
 # Configuration
 LOG_LEVEL = load_env(
     name='LOG_LEVEL',
-    default='INFO',
+    default='WARNING',
     valid_values=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
     sanitize=lambda x: x.upper()
 )
-USE_TLS = load_env(
-    name='USE_TLS', 
-    default='true', 
-    valid_values=['true', 'false'], 
+TLS_SOURCE = load_env(
+    name='TLS_SOURCE', 
+    default='file', 
+    valid_values=['off', 'file', 'keyvault'], 
     sanitize=lambda x: x.lower(),
-    convert=lambda x: x == 'true'
 )
 REQUIRE_TLS = load_env(
     name='REQUIRE_TLS', 
@@ -56,7 +56,14 @@ USERNAME_DELIMITER = load_env(
     default='@',
     valid_values=['@', ':', '|']
 )
-
+AZURE_KEY_VAULT_URL = load_env(
+    name='AZURE_KEY_VAULT_URL',
+    default=None,  # Make it optional
+)
+AZURE_KEY_VAULT_CERT_NAME = load_env(
+    name='AZURE_KEY_VAULT_CERT_NAME',
+    default=None,  # Make it optional
+)
 
 
 def parse_username(username):
@@ -202,28 +209,27 @@ class Handler:
             return "554 Transaction failed"
 
 
+
 # noinspection PyShadowingNames
 async def amain():
+    match TLS_SOURCE:
+        case 'file':
+            context = sslContext.from_file(TLS_CERT_FILEPATH, TLS_KEY_FILEPATH)
+            logging.info(f"Loaded certificate from file: {TLS_CERT_FILEPATH}")
+            
+        case 'keyvault':
+            if not AZURE_KEY_VAULT_URL or not AZURE_KEY_VAULT_CERT_NAME:
+                logging.error("Azure Key Vault URL and Certificate Name must be set when TLS_SOURCE is 'keyvault'")
+                raise ValueError("Azure Key Vault URL and Certificate Name must be set")
+            context = sslContext.from_keyvault(AZURE_KEY_VAULT_URL, AZURE_KEY_VAULT_CERT_NAME)
+            logging.info(f"Loaded certificate from Azure Key Vault: {AZURE_KEY_VAULT_CERT_NAME}")
+            
+        case 'off':
+            context = None
 
-    # load ssl context
-    context = None
-    if USE_TLS:
-        # check if cert and key files exist
-        if not os.path.exists(path=TLS_CERT_FILEPATH) or not os.path.exists(path=TLS_KEY_FILEPATH):
-            logging.error("Certificate or key not found")
-            raise FileNotFoundError("Certificate or key not found")
-
-        # load default context
-        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-
-        # load cert and key
-        try:
-            context.load_cert_chain(certfile=TLS_CERT_FILEPATH, keyfile=TLS_KEY_FILEPATH)
-        except ssl.SSLError as e:
-            logging.error(f"Failed to load Certificate or key: {str(e)}")
-            raise
-        except FileNotFoundError as e:
-            logging.error(f"Certificate or key not found: {str(e)}")
+        case _:
+            logging.error(f"Invalid TLS_SOURCE: {TLS_SOURCE}")
+            raise ValueError(f"Invalid TLS_SOURCE: {TLS_SOURCE}")
 
 
     controller = None
