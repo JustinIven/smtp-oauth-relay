@@ -5,6 +5,8 @@ run-name: "Build Docker image: ${{ github.sha }}"
 on:
   push:
     branches: main
+    tags:
+      - 'v*.*.*'  # Matches semantic version tags like v1.0.0
   release:
     types: [published]
 
@@ -42,10 +44,11 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=,format=short
-            type=ref,event=tag
-            type=ref,event=pr
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}}
             # Only add 'latest' tag for releases or tags
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.ref_type == 'tag' }}
 
       # Set up Docker Buildx
       - name: Set up Docker Buildx

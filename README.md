@@ -216,8 +216,8 @@ Configure your SMTP client with the following settings:
 |-----------|----------------------------|
 | Server    | Your SMTP OAuth Relay host |
 | Port      | `8025`                     |
-| SMTP-encryption | `STARTTLS` or no auth      |
-| Username  | `tenant_id:client_id`      |
+| Encryption | `STARTTLS` or none      |
+| Username  | As described above      |
 | Password  | `client_secret`            |
 
 ## Additional
