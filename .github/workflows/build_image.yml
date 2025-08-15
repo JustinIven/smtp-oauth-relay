@@ -5,6 +5,8 @@ run-name: "Build Docker image: ${{ github.sha }}"
 on:
   push:
     branches: main
+  release:
+    types: [published]
 
 env:
   REGISTRY: ghcr.io
@@ -40,7 +42,10 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=,format=short
-            type=raw,value=latest
+            type=ref,event=tag
+            type=ref,event=pr
+            # Only add 'latest' tag for releases or tags
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
 
       # Set up Docker Buildx
       - name: Set up Docker Buildx
@@ -63,4 +68,3 @@ jobs:
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
-      
