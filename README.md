@@ -1,11 +1,35 @@
 # SMTP OAuth Relay
-An SMTP server that acts as a relay between traditional SMTP clients and the Microsoft Graph API, using OAuth 2.0 authentication to send emails.
 
-## Overview
-This project implements an SMTP server that authenticates using application credentials against the Microsoft IdP and sends emails through Microsoft Graph. It enables applications that only support SMTP to send emails through Microsoft services using modern OAuth authentication methods.
+An SMTP relay that accepts SMTP submissions from legacy clients and forwards messages to Microsoft Graph using OAuth 2.0 client credentials.
 
-## Getting started
-### Using Docker (recommended)
+This repository implements a small, stateless SMTP server that:
+- Accepts SMTP connections on port 8025 (configurable)
+- Authenticates clients using a special username format containing a tenant and client (application) id, plus the client secret as the password
+- Acquires an application token from Microsoft Entra ID
+- Sends messages through Microsoft Graph using the application's Mail.Send permission
+
+The goal is to let SMTP-only clients send mail through Microsoft services without embedding user credentials.
+
+## Table of Contents
+- [Server configuration](#server-configuration)
+  - [Getting started (Docker)](#getting-started-docker)
+  - [Configuration (environment variables)](#configuration-environment-variables)
+  - [TLS / certificates](#tls--certificates)
+- [Client configuration](#client-configuration)
+  - [Setting up Microsoft Entra ID application](#setting-up-microsoft-entra-id-application)
+  - [SMTP username format](#smtp-username-format)
+  - [SMTP client configuration](#smtp-client-configuration)
+- [Additional](#additional)
+  - [How it works](#how-it-works)
+  - [Security considerations](#security-considerations)
+  - [FAQ](#faq)
+  - [License](#license)
+
+---
+
+## Server configuration
+
+### Getting started (Docker)
 The easiest way to run the SMTP OAuth Relay is via Docker:
 ```shell
 docker run --name smtp-relay -p 8025:8025 \
@@ -16,36 +40,52 @@ docker run --name smtp-relay -p 8025:8025 \
   ghcr.io/justiniven/smtp-oauth-relay:latest
 ```
 
+### Configuration (environment variables)
 
-## Configuration
-The server can be configured using the following environment variables:
-| Variable        | Description                                           | Default                          |
-|-----------------|-------------------------------------------------------|----------------------------------|
-| LOG_LEVEL       | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) | INFO                             |
-| USE_TLS         | Enable/disable TLS                                    | True                             |
-| REQUIRE_TLS     | Require TLS for authentication                        | True                             |
-| SERVER_GREETING | SMTP server greeting message                          | Microsoft Graph SMTP OAuth Relay |
-| TLS_CERT_FILEPATH | Path to TLS certificate file                        | certs/cert.pem                   |
-| TLS_KEY_FILEPATH  | Path to TLS private key file                        | certs/key.pem                    |
-| USERNAME_DELIMITER | Delimiter between tenant_id and client_id in username | @                              |
+The server is configured via environment variables. Defaults shown below reflect the current implementation in `main.py`.
 
-**Notes:**
-- `USE_TLS` and `REQUIRE_TLS` accept `true` or `false` (case-insensitive).
-- `USERNAME_DELIMITER` can be `@`, `:`, or `|`.
-- If you change the delimiter, update your SMTP client username accordingly.
+| Variable                 | Meaning / type                                  | Default                |
+|--------------------------|--------------------------------------------------|------------------------|
+| LOG_LEVEL                | Logging level (DEBUG, INFO, WARNING, ERROR)     | WARNING               |
+| TLS_SOURCE               | TLS source: `off`, `file`, or `keyvault`        | file                  |
+| REQUIRE_TLS              | Require TLS for authentication (true/false)     | true                  |
+| SERVER_GREETING          | SMTP server ident / greeting string             | Microsoft Graph SMTP OAuth Relay |
+| TLS_CERT_FILEPATH        | Path to TLS certificate (PEM)                   | certs/cert.pem        |
+| TLS_KEY_FILEPATH         | Path to TLS private key (PEM)                   | certs/key.pem         |
+| USERNAME_DELIMITER       | Delimiter between tenant_id and client_id       | @                     |
+| AZURE_KEY_VAULT_URL      | (optional) Key Vault URL when TLS_SOURCE=keyvault | (none)              |
+| AZURE_KEY_VAULT_CERT_NAME| (optional) Key Vault certificate name          | (none)                |
 
-### Certificate Management
-The SMTP OAuth Relay requires TLS certificates when operating with `USE_TLS=True` (the default). Certificates are expected in the `/usr/src/smtp-relay/certs` directory with these filenames:
-- `cert.pem` - The TLS certificate file
-- `key.pem` - The private key file
+Notes:
+- Boolean-like values are parsed case-insensitively (e.g. `true`, `True`, `false`).
+- `USERNAME_DELIMITER` may be one of `@`, `:` or `|`.
+- If `TLS_SOURCE` is `keyvault`, set `AZURE_KEY_VAULT_URL` and `AZURE_KEY_VAULT_CERT_NAME`.
+
+### TLS / certificates
+
+The server expects PEM-encoded certificate and private key files when `TLS_SOURCE=file`.
+
+Generate a self-signed cert for local testing:
+
+```bash
+mkdir -p certs
+openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.pem -days 365 \
+    -subj "/CN=localhost"
+```
+
+For production, provide a valid certificate chain and private key.
+
+If you want to use Azure Key Vault for TLS material, set `TLS_SOURCE=keyvault` and provide `AZURE_KEY_VAULT_URL` and `AZURE_KEY_VAULT_CERT_NAME`.
 
 
-## Usage
-### Setup in Microsoft Entra ID
-1. Create an application in Microsoft Entra ID with the application permission `Mail.Send`
-2. Grant admin consent for the permission
-3. Create an application secret
-4. Note your tenant ID, application (client) ID, and client secret
+
+## Client configuration
+### Setting up Microsoft Entra ID application
+1. Create an application (App Registration) in the Azure portal (or via Microsoft Graph / PowerShell).
+2. Grant the application the application permission Mail.Send and grant admin consent for the tenant.
+3. Create a client secret and record the value (this will be the SMTP password).
+4. (Recommended) Restrict the app so it can only send on behalf of specific sender addresses using an Application Access Policy.
+
 <details>
 <summary>Create and restrict Application with PowerShell</summary>
 
@@ -131,33 +171,58 @@ Write-Host "$($application.passwordCredentials[0].secretText)" -ForegroundColor 
 
 </details>
 
-### SMTP Username Format
-The username for authentication must be in the format:
+### SMTP username format
+
+Authenticate with username and password where:
 
 ```
 <tenant_id><delimiter><client_id>[.optional_tld]
 ```
 
-- `<tenant_id>`: Your Microsoft Entra tenant ID (UUID or base64url-encoded UUID)
-- `<client_id>`: Your application (client) ID (UUID or base64url-encoded UUID)
-- `<delimiter>`: The character set in `USERNAME_DELIMITER` (default: `@`)
-- `[.optional_tld]`: (Optional) A dot and any string (such as a domain or TLD) after the client_id, which will be ignored by the server.
+- `tenant_id`: your Azure tenant ID. Either the UUID form or a base64url-encoded UUID.
+- `client_id`: the application (client) ID. Either UUID or base64url-encoded UUID.
+- `delimiter`: character defined by `USERNAME_DELIMITER` (default `@`).
+- `optional_tld`: a dot and any characters after the client_id; this will be ignored by the server (useful for older clients that require an `@domain` on the username).
 
-Example: `12345678-1234-1234-1234-123456789abc@abcdefab-1234-5678-abcd-abcdefabcdef.local`
+Examples:
+
+- UUID form:
+
+```
+12345678-1234-1234-1234-123456789abc@abcdefab-1234-5678-abcd-abcdefabcdef
+```
+
+- base64url-encoded UUID form (how to generate):
+
+```bash
+# Replace the UUID below with your UUID
+python - <<'PY'
+import base64, uuid
+u = uuid.UUID('12345678-1234-1234-1234-123456789abc')
+print(base64.urlsafe_b64encode(u.bytes).decode().rstrip('='))
+PY
+```
+
+You can then use the encoded value in the username, for example:
+
+```
+<base64url_tenant>@<base64url_client>.local
+```
 
 ### SMTP Client Configuration
 Configure your SMTP client with the following settings:
+
 | Setting   | Value                      |
 |-----------|----------------------------|
 | Server    | Your SMTP OAuth Relay host |
 | Port      | `8025`                     |
-| SMTP-Auth | `STARTTLS` or no auth      |
+| SMTP-encryption | `STARTTLS` or no auth      |
 | Username  | `tenant_id:client_id`      |
 | Password  | `client_secret`            |
 
+## Additional
 
-
-## How it works
+### How it works
 1. The SMTP server accepts connections on port 8025
 2. Clients authenticate using tenant_id:client_id as username and client_secret as password
 3. The server obtains an OAuth token from the Microsoft identity platform
@@ -166,13 +231,13 @@ Configure your SMTP client with the following settings:
 
 ![Sequence diagram](docs/images/sequenceDiagram.svg)
 
-## Security Considerations
+### Security considerations
 - Always use TLS in production environments
-- Store client secrets securely and never commit them to source control
+- Store client secrets securely and rotate them from time to time
 - Restrict application permissions to only the necessary sender addresses using Application Access Policies
 - Monitor logs for failed authentication or sending attempts
 
-## FAQ
+### FAQ
 Q: Can I use this relay with any SMTP client? \
 A: Yes, any SMTP client that supports AUTH PLAIN or AUTH LOGIN should work.
 
@@ -188,6 +253,5 @@ A: This relay is designed for moderate email volumes. Exchange Online rate limit
 Q: Can I run multiple instances for high availability? \
 A: Yes, the relay is stateless and can be run in multiple instances behind a load balancer.
 
-
-## License
+### License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
