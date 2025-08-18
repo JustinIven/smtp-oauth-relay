@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM python:3.13-slim
+FROM python:3.13.7-slim
 
 # Set the working directory in the container
 WORKDIR /usr/src/smtp-relay/
