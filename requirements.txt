@@ -19,7 +19,7 @@ multidict==6.6.4
 propcache==0.3.2
 pycparser==2.22
 PyJWT==2.10.1
-requests==2.32.4
+requests==2.32.5
 setuptools==80.9.0
 six==1.17.0
 smmap==5.0.1
