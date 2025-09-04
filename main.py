@@ -5,9 +5,13 @@ import base64
 import os
 import re
 import uuid
+from email import message_from_bytes
 
 from custom import CustomController
 from aiosmtpd.smtp import AuthResult
+
+from azure.identity import DefaultAzureCredential
+from azure.data.tables import TableClient
 
 import sslContext
 
@@ -64,9 +68,67 @@ AZURE_KEY_VAULT_CERT_NAME = load_env(
     name='AZURE_KEY_VAULT_CERT_NAME',
     default=None,  # Make it optional
 )
+AZURE_TABLES_URL = load_env(
+    name='AZURE_TABLES_URL',
+    default=None,  # Make it optional
+)
+AZURE_TABLES_PARTITION_KEY = load_env(
+    name='AZURE_TABLES_PARTITION_KEY',
+    default='user'
+)
 
 
-def parse_username(username):
+def decode_uuid_or_base64url(input_str: str) -> str:
+    """
+    Checks if input is a UUID string, otherwise attempts to decode as base64url and convert to UUID string.
+    Returns a decoded string in UUID format.
+    """
+
+    # check if the input is a UUID
+    uuid_pattern = re.compile(r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$')
+    if uuid_pattern.match(input_str):
+        return input_str
+
+    # Attempt to decode as base64url
+    try:
+        return str(uuid.UUID(bytes=base64.urlsafe_b64decode(input_str + '=' * (-len(input_str) % 4))))
+    except Exception:
+        raise ValueError(f"Invalid base64url encoding in input '{input_str}'")
+
+
+def lookup_user(lookup_id: str) -> tuple[str, str, str|None]:
+    """
+    Search in Azure Table for user information based on the lookup_id (RowKey).
+    Returns (tenant_id, client_id, from_email) or raises ValueError if not found.
+    """
+    if not AZURE_TABLES_URL:
+        raise ValueError("AZURE_TABLES_URL environment variable not set")
+
+    try:
+        credential = DefaultAzureCredential()
+        with TableClient.from_table_url(table_url=AZURE_TABLES_URL, credential=credential) as client: # pyright: ignore[reportArgumentType]
+            entities = client.query_entities(query_filter=f"PartitionKey eq '{AZURE_TABLES_PARTITION_KEY}' and RowKey eq '{lookup_id}'")
+            entity = None
+            for i in entities:
+                entity = i
+                break
+    except Exception as e:
+        raise RuntimeError(f"Failed to query Azure Table: {str(e)}") from e
+
+    if not entity:
+        raise ValueError(f"No entity found for RowKey '{lookup_id}'")
+
+    tenant_id = entity.get('tenant_id')
+    client_id = entity.get('client_id')
+    from_email = entity.get('from_email')
+
+    if not tenant_id or not client_id:
+        raise ValueError(f"Entity for RowKey '{lookup_id}' is missing tenant_id or client_id")
+
+    return tenant_id, client_id, from_email
+
+
+def parse_username(username: str) -> tuple[str, str, str|None]:
     """
     Parse the username to extract tenant_id and client_id.
     The expected format is: tenant_id{USERNAME_DELIMITER}client_id{. optional_tld}
@@ -85,24 +147,15 @@ def parse_username(username):
     if len(parts) != 2:
         raise ValueError(f"Invalid username format. Expected exactly one '{USERNAME_DELIMITER}' character")
     
-    # check if parts have a UUID-like format or else base64url decode them
-    uuid_pattern = re.compile(r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$')
-    decoded_parts = []
-    for part in parts:
-        if uuid_pattern.match(part):
-            decoded_parts.append(part)
-            continue  # valid UUID format, no need to decode
+    # check if the second part hints a user stored in the lookup table
+    if parts[1] == 'lookup':
+        return lookup_user(parts[0])
 
-        # Attempt to decode as base64url
-        try:
-            decoded_parts.append(str(uuid.UUID(bytes=base64.urlsafe_b64decode(part + '=' * (-len(part) % 4)))))
-        except Exception as e:
-            raise ValueError(f"Invalid base64url encoding in part '{part}'")
-
-    return decoded_parts[0], decoded_parts[1]
+    # else return both parts decoded
+    return decode_uuid_or_base64url(parts[0]), decode_uuid_or_base64url(parts[1]), None
 
 
-def get_access_token(tenant_id, client_id, client_secret):
+def get_access_token(tenant_id: str, client_id: str, client_secret: str) -> str:
     data = {
         "grant_type": "client_credentials",
         "client_id": client_id,
@@ -126,7 +179,7 @@ def get_access_token(tenant_id, client_id, client_secret):
         raise
 
 
-def send_email(access_token, body, from_email):
+def send_email(access_token: str, body: bytes, from_email: str) -> bool:
     url = f"https://graph.microsoft.com/v1.0/users/{from_email}/sendMail"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -168,12 +221,13 @@ class Authenticator:
             
             # Parse tenant_id and client_id from login string using the configured format
             try:
-                tenant_id, client_id = parse_username(login_str)
+                tenant_id, client_id, from_email = parse_username(login_str)
             except ValueError as e:
                 logging.error(str(e))
                 return AuthResult(success=False, handled=False, message=f"535 5.7.8 {str(e)}")
                 
             client_secret = auth_data.password
+            session.lookup_from_email = from_email
 
             try:
                 session.access_token = get_access_token(tenant_id, client_id, client_secret)
@@ -195,10 +249,21 @@ class Handler:
             if not hasattr(session, 'access_token'):
                 logging.error("No access token available in session")
                 return "530 5.7.0 Authentication required"
-                
-            # Send email using Microsoft Graph API
-            success = send_email(session.access_token, envelope.content, envelope.mail_from)
-            
+
+            if session.lookup_from_email:
+                # some clients won't let you set a from address independent of the auth user. Issue: #36
+                # replace from header in envelope if lookup_from_email is set
+                envel = message_from_bytes(envelope.content)
+                del envel['From']  # delete all occurrences of From header
+                envel['From'] = session.lookup_from_email  # set new From header
+
+                # Send email using Microsoft Graph API
+                success = send_email(session.access_token, envel.as_bytes(), session.lookup_from_email)
+
+            else:
+                # Send email using Microsoft Graph API
+                success = send_email(session.access_token, envelope.content, envelope.mail_from)
+
             if success:
                 return "250 OK"
             else:
