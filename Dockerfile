@@ -4,8 +4,8 @@ FROM python:3.13-slim
 # Set the working directory in the container
 WORKDIR /usr/src/smtp-relay/
 
-# Copy the current directory contents into the container
-COPY . .
+# Copy the src contents into the container
+COPY ./src .
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
