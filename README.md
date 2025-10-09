@@ -2,256 +2,180 @@
 
 An SMTP relay that accepts SMTP submissions from legacy clients and forwards messages to Microsoft Graph using OAuth 2.0 client credentials.
 
-This repository implements a small, stateless SMTP server that:
-- Accepts SMTP connections on port 8025 (configurable)
-- Authenticates clients using a special username format containing a tenant and client (application) id, plus the client secret as the password
-- Acquires an application token from Microsoft Entra ID
-- Sends messages through Microsoft Graph using the application's Mail.Send permission
+## Overview
 
-The goal is to let SMTP-only clients send mail through Microsoft services without embedding user credentials.
+This repository implements a small, stateless SMTP server that bridges the gap between legacy SMTP clients and Microsoft 365's modern authentication requirements:
 
-## Table of Contents
-- [Server configuration](#server-configuration)
-  - [Getting started (Docker)](#getting-started-docker)
-  - [Configuration (environment variables)](#configuration-environment-variables)
-  - [TLS / certificates](#tls--certificates)
-- [Client configuration](#client-configuration)
-  - [Setting up Microsoft Entra ID application](#setting-up-microsoft-entra-id-application)
-  - [SMTP username format](#smtp-username-format)
-  - [SMTP client configuration](#smtp-client-configuration)
-- [Additional](#additional)
-  - [How it works](#how-it-works)
-  - [Security considerations](#security-considerations)
-  - [FAQ](#faq)
-  - [License](#license)
+- 🔒 **OAuth 2.0 Authentication**: Uses application credentials instead of user passwords
+- 📧 **Microsoft Graph Integration**: Sends email via the Microsoft Graph API
+- 🔌 **SMTP Compatibility**: Works with any SMTP client (AUTH LOGIN/PLAIN)
+- 🚀 **Stateless & Scalable**: Can be deployed in multiple instances for high availability
+- 🔐 **Security-First**: Supports TLS encryption and Azure Key Vault integration
+- 📊 **Azure Tables Support**: Optional centralized credential management
 
----
+### Comparison with Other Solutions
 
-## Server configuration
+| Feature | SMTP OAuth Relay | Azure Communication Services | Microsoft 365 High Volume Email (Preview) |
+|---------|-----------------|------------------------------|----------------------------------|
+| **Purpose** | Bridge legacy SMTP clients to Microsoft 365 | General email/SMS/voice service | High-volume transactional email |
+| **Use Case** | Legacy devices, printers, apps without OAuth | Application email/SMS at scale | Marketing, newsletters, bulk email |
+| **SMTP Support** | ✅ SMTP compatibility | ✅ SMTP available | ✅ SMTP compatibility |
+| **Send Externally** | ✅ Yes (to any recipient) | ✅ Yes (to any recipient) | ❌ No (only internal) |
+| **Legacy Device Support** | ✅ Excellent | ⚠️ Moderate* | ✅ Excellent |
+| **Multi-tenant** | ✅ Yes | ❌ No | ❌ No |
+| **Sender Address** | Uses existing M365 mailboxes | Custom domains | Uses dedicated Mailbox (HVE-Account) |
+| **Pricing** | Free (self-hosted) | Pay-per-use (email/SMS/calls) | Free in Preview |
+| **Infrastructure** | Self-hosted (Docker/K8s) | Fully managed Azure service | Fully managed Microsoft service |
+| **Deliverability** | Microsoft 365 reputation | Separate IP pools and reputation | Microsoft 365 reputation |
+| **Volume Limits** | Based on M365 mailbox limits | Very high (purpose-built for scale) | Very high (designed for bulk) |
+| **Setup Complexity** | Moderate (deploy + Entra app) | Moderate (provision resource + Entra app) | Low (create HVE-Account) |
 
-### Getting started (Docker)
-The easiest way to run the SMTP OAuth Relay is via Docker:
-```shell
+*Some legacy devices may not support providing a dedicated From address or may implement a character limit, which won't work with ACS.
+
+## Quick Start
+
+### Run with Docker
+
+```bash
 docker run --name smtp-relay -p 8025:8025 \
   -v $(pwd)/certs:/usr/src/smtp-relay/certs \
   -e LOG_LEVEL=INFO \
-  -e USE_TLS=True \
-  -e REQUIRE_TLS=True \
+  -e TLS_SOURCE=file \
+  -e REQUIRE_TLS=true \
   ghcr.io/justiniven/smtp-oauth-relay:latest
 ```
 
-### Configuration (environment variables)
+### Basic Configuration
 
-The server is configured via environment variables. Defaults shown below reflect the current implementation in `main.py`.
+| Setting | Value |
+|---------|-------|
+| **SMTP Server** | Your relay hostname |
+| **Port** | 8025 |
+| **Security** | STARTTLS |
+| **Username** | `tenant_id@client_id` |
+| **Password** | Your app's client secret |
 
-| Variable                 | Meaning / type                                  | Default                |
-|--------------------------|--------------------------------------------------|------------------------|
-| LOG_LEVEL                | Logging level (DEBUG, INFO, WARNING, ERROR)     | WARNING               |
-| TLS_SOURCE               | TLS source: `off`, `file`, or `keyvault`        | file                  |
-| REQUIRE_TLS              | Require TLS for authentication (true/false)     | true                  |
-| SERVER_GREETING          | SMTP server ident / greeting string             | Microsoft Graph SMTP OAuth Relay |
-| TLS_CERT_FILEPATH        | Path to TLS certificate (PEM)                   | certs/cert.pem        |
-| TLS_KEY_FILEPATH         | Path to TLS private key (PEM)                   | certs/key.pem         |
-| USERNAME_DELIMITER       | Delimiter between tenant_id and client_id       | @                     |
-| AZURE_KEY_VAULT_URL      | (optional) Key Vault URL when TLS_SOURCE=keyvault | (none)              |
-| AZURE_KEY_VAULT_CERT_NAME| (optional) Key Vault certificate name          | (none)                |
+## Documentation
 
-Notes:
-- Boolean-like values are parsed case-insensitively (e.g. `true`, `True`, `false`).
-- `USERNAME_DELIMITER` may be one of `@`, `:` or `|`.
-- If `TLS_SOURCE` is `keyvault`, set `AZURE_KEY_VAULT_URL` and `AZURE_KEY_VAULT_CERT_NAME`.
+### 📘 Getting Started
+- **[Installation Guide](docs/installation.md)** - Docker, Kubernetes, manual installation
+- **[Configuration Reference](docs/configuration.md)** - All environment variables explained
+- **[Azure/Entra ID Setup](docs/azure-setup.md)** - Create and configure Azure applications
 
-### TLS / certificates
+### 🔧 Configuration
+- **[Client Setup Guide](docs/client-setup.md)** - Configure email clients, printers, applications
+- **[Authentication Guide](docs/authentication.md)** - Username formats, UUID encoding, lookup tables
+- **[Azure Tables Integration](docs/azure-tables.md)** - Centralized credential management
 
-The server expects PEM-encoded certificate and private key files when `TLS_SOURCE=file`.
+### 🏗️ Architecture & Help
+- **[Architecture & How It Works](docs/architecture.md)** - Technical implementation details
+- **[FAQ](docs/faq.md)** - Frequently asked questions
 
-Generate a self-signed cert for local testing:
+## Features
 
-```bash
-mkdir -p certs
-openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.pem -days 365 \
-    -subj "/CN=localhost"
-```
+### Authentication Options
 
-For production, provide a valid certificate chain and private key.
-
-If you want to use Azure Key Vault for TLS material, set `TLS_SOURCE=keyvault` and provide `AZURE_KEY_VAULT_URL` and `AZURE_KEY_VAULT_CERT_NAME`.
-
-
-
-## Client configuration
-### Setting up Microsoft Entra ID application
-1. Create an application (App Registration) in the Azure portal (or via Microsoft Graph / PowerShell).
-2. Grant the application the application permission Mail.Send and grant admin consent for the tenant.
-3. Create a client secret and record the value (this will be the SMTP password).
-4. (Recommended) Restrict the app so it can only send on behalf of specific sender addresses using an Application Access Policy.
-
-<details>
-<summary>Create and restrict Application with PowerShell</summary>
-
-```powershell
-$appName = "SMTP Relay"
-$appSecretEndDateTime = (Get-Date).AddYears(2)
-$senderAddress = "test@example.com"
-
-
-Connect-MgGraph -Scopes "Application.ReadWrite.All" -NoWelcome
-Connect-ExchangeOnline -ShowBanner:$false
-
-
-# create application
-$application = Invoke-MgGraphRequest `
-    -Method "POST" `
-    -Uri "https://graph.microsoft.com/v1.0/applications" `
-    -Body @{
-        displayName = $AppName
-        signInAudience = "AzureADMyOrg"
-        passwordCredentials = @(
-            @{
-                displayName = "secret01"
-                endDateTime = $appSecretEndDateTime
-            }
-        )
-        requiredResourceAccess = @(
-            @{
-                resourceAppId = "00000003-0000-0000-c000-000000000000" # Microsoft Graph
-                resourceAccess = @(
-                    @{ 
-                        id = "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Mail.Send
-                        type = "Role"
-                    }
-                )
-            }
-        )
-    }
-
-
-# create service principal
-$servicePrincipal = Invoke-MgGraphRequest `
-    -Method "POST" `
-    -Uri "https://graph.microsoft.com/v1.0/servicePrincipals" `
-    -Body @{
-        appId = $application.appId
-        tags = @(
-            "WindowsAzureActiveDirectoryIntegratedApp"
-            "HideApp"
-        )
-    }
-
-
-# grant tenant-wide admin consent
-Invoke-MgGraphRequest `
-    -Method "POST" `
-    -Uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($servicePrincipal.id)/appRoleAssignments" `
-    -Body @{
-        principalId = $servicePrincipal.id
-        resourceId = "7aeb2b66-3434-4d91-b79e-fe5f94c2634b" # Microsoft Graph Service Principal
-        appRoleId = "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Mail.Send
-    }
-
-
-
-# restrict the application to send emails only from the specified sender addresses
-New-ApplicationAccessPolicy `
-    -AppId $application.appId `
-    -PolicyScopeGroupId $senderAddress `
-    -AccessRight RestrictAccess `
-    -Description "Restrict the SMTP Relay application to send emails only from the specified sender addresses"
-
-
-# get tenant id
-$tenantId = (Get-MgContext).TenantId
-
-
-Write-Host "Username: " -NoNewline
-Write-Host "$($tenantId):$($application.appId)" -ForegroundColor Green
-Write-Host "Password: " -NoNewline
-Write-Host "$($application.passwordCredentials[0].secretText)" -ForegroundColor Green
-```
-
-</details>
-
-### SMTP username format
-
-Authenticate with username and password where:
-
-```
-<tenant_id><delimiter><client_id>[.optional_tld]
-```
-
-- `tenant_id`: your Azure tenant ID. Either the UUID form or a base64url-encoded UUID.
-- `client_id`: the application (client) ID. Either UUID or base64url-encoded UUID.
-- `delimiter`: character defined by `USERNAME_DELIMITER` (default `@`).
-- `optional_tld`: a dot and any characters after the client_id; this will be ignored by the server (useful for older clients that require an `@domain` on the username).
-
-Examples:
-
-- UUID form:
-
+**Direct UUID Format**:
 ```
 12345678-1234-1234-1234-123456789abc@abcdefab-1234-5678-abcd-abcdefabcdef
 ```
 
-- base64url-encoded UUID form (how to generate):
-
-```bash
-# Replace the UUID below with your UUID
-python - <<'PY'
-import base64, uuid
-u = uuid.UUID('12345678-1234-1234-1234-123456789abc')
-print(base64.urlsafe_b64encode(u.bytes).decode().rstrip('='))
-PY
+**Base64URL Encoded** (shorter):
+```
+EjRWeBI0EjQSNBI0VnirzQ@q83rrBI0VnirzN21q837qg
 ```
 
-You can then use the encoded value in the username, for example:
-
+**Azure Tables Lookup** (custom):
 ```
-<base64url_tenant>@<base64url_client>.local
+printer1@lookup
 ```
 
-### SMTP Client Configuration
-Configure your SMTP client with the following settings:
+### TLS Certificate Sources
 
-| Setting   | Value                      |
-|-----------|----------------------------|
-| Server    | Your SMTP OAuth Relay host |
-| Port      | `8025`                     |
-| Encryption | `STARTTLS` or none      |
-| Username  | As described above      |
-| Password  | `client_secret`            |
+- **File**: Load from filesystem (development, production with Let's Encrypt)
+- **Azure Key Vault**: Managed certificate storage with automatic rotation
+- **Off**: Disable TLS (development only)
 
-## Additional
+### Advanced Features
 
-### How it works
-1. The SMTP server accepts connections on port 8025
-2. Clients authenticate using tenant_id:client_id as username and client_secret as password
-3. The server obtains an OAuth token from the Microsoft identity platform
-4. When an email is received via SMTP, it's converted to a Microsoft Graph API request
-5. The email is sent using the application's permissions
+- ✅ Multiple tenant support (single relay for multiple organizations)
+- ✅ Application Access Policies integration (restrict sender addresses)
+- ✅ Azure Tables for simplified credentials
+- ✅ Sender address override
+- ✅ Horizontal scaling (stateless design)
+- ✅ Comprehensive logging and monitoring
 
-![Sequence diagram](docs/images/sequenceDiagram.svg)
+## Architecture
 
-### Security considerations
-- Always use TLS in production environments
-- Store client secrets securely and rotate them from time to time
-- Restrict application permissions to only the necessary sender addresses using Application Access Policies
-- Monitor logs for failed authentication or sending attempts
+![Authentication Flow](docs/images/sequenceDiagram.svg)
 
-### FAQ
-Q: Can I use this relay with any SMTP client? \
-A: Yes, any SMTP client that supports AUTH PLAIN or AUTH LOGIN should work.
+## Use Cases
 
-Q: Does this support multiple sender addresses? \
-A: Yes, you can configure your Entra ID application to have permissions for multiple sender addresses.
+### Legacy Devices
+- Network printers with scan-to-email
+- Multifunction devices
+- Fax servers
+- Security cameras
 
-Q: Can the relay be used with email addresses from different Microsoft tenants? \
-A: Yes, since the service relies on the tenant ID in the username, it can be used with multiple tenants simultaneously.
+### Applications
+- Monitoring systems (Grafana, Nagios)
+- CI/CD pipelines (Jenkins, GitLab)
+- Content management systems (WordPress, Drupal)
+- Custom applications without OAuth support
 
-Q: Is this relay suitable for high-volume email sending? \
-A: This relay is designed for moderate email volumes. Exchange Online rate limits apply. For high-volume scenarios, consider Microsoft's native services like Azure Communication Services or Microsoft 365 High Volume Email.
+### Network Infrastructure
+- NAS devices (Synology, QNAP)
+- Firewalls and routers
+- UPS systems
+- IoT devices
 
-Q: Can I run multiple instances for high availability? \
-A: Yes, the relay is stateless and can be run in multiple instances behind a load balancer.
+## Requirements
 
-### License
+### Server Requirements
+- Python 3.11+ (if running manually)
+- Docker (recommended) or Kubernetes
+- Network access to Microsoft APIs
+- TLS certificate (production)
+
+### Azure Requirements
+- Microsoft 365 / Exchange Online tenant
+- Microsoft Entra ID (Azure AD)
+- Application registration with Mail.Send permission
+
+### Optional
+- Azure Key Vault (for certificate management)
+- Azure Table Storage (for credential lookup)
+- Managed Identity (for Azure services)
+
+## Security
+
+This relay implements security best practices:
+
+- 🔐 **TLS Encryption**: Protects credentials in transit
+- 🔑 **OAuth 2.0**: No user passwords stored or transmitted
+- 🛡️ **Application Permissions**: Centrally managed in Azure
+- 📝 **Audit Logging**: Full activity logs in Azure AD
+- 🚫 **Access Policies**: Restrict sender addresses
+- 🔄 **Secret Rotation**: Regular credential rotation support
+
+## Community & Support
+
+- 📖 **Documentation**: Comprehensive guides in the `docs/` folder
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/justiniven/smtp-oauth-relay/issues)
+- 💡 **Feature Requests**: [GitHub Issues](https://github.com/justiniven/smtp-oauth-relay/issues)
+- 🤝 **Contributions**: Pull requests welcome!
+
+## License
+
 This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
+
+## Acknowledgments
+
+Built with:
+- [aiosmtpd](https://aiosmtpd.aio-libs.org/) - SMTP server framework
+- [Microsoft Graph API](https://learn.microsoft.com/en-us/graph/) - Email sending
+- [Microsoft Identity Platform](https://learn.microsoft.com/en-us/entra/identity-platform/) - OAuth authentication
+
+---
+
+**Ready to get started?** → [Installation Guide](docs/installation.md)
