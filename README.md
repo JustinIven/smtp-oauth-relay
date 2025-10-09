@@ -34,6 +34,12 @@ This repository implements a small, stateless SMTP server that bridges the gap b
 
 ## Quick Start
 
+### Deploy on Azure
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FJustinIven%2Fsmtp-oauth-relay%2Fmain%2Fazure_deployment%2Fdeployment.json)
+
+Refer to the [Installation Guide](docs/installation.md) for detailed steps.
+
+
 ### Run with Docker
 
 ```bash
