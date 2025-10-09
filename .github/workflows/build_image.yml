@@ -3,6 +3,7 @@ name: Create and publish a Docker image
 run-name: "Build Docker image: ${{ github.sha }}"
 
 on:
+  workflow_dispatch:
   push:
     branches: main
     tags:
