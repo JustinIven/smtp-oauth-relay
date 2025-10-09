@@ -19,6 +19,10 @@ def from_keyvault(azure_key_vault_url, azure_key_vault_cert_name):
     client = SecretClient(vault_url=azure_key_vault_url, credential=credential)
         
     cert_secret = client.get_secret(azure_key_vault_cert_name)
+    if not cert_secret or not cert_secret.value:
+        logging.error("Certificate not found in Key Vault")
+        raise ValueError("Certificate not found in Key Vault")
+
     cert_data = base64.b64decode(cert_secret.value)
     # Load the certificate and key from the PKCS#12 data
     try:
@@ -30,10 +34,16 @@ def from_keyvault(azure_key_vault_url, azure_key_vault_cert_name):
     # Create a temporary file to store the certificate and key
     with NamedTemporaryFile(delete=False) as cert_file, NamedTemporaryFile(delete=False) as key_file:
         # write certificate
+        if certificate is None:
+            logging.error("No certificate found in PKCS#12 data")
+            raise ValueError("No certificate found in PKCS#12 data")
         cert_file.write(certificate.public_bytes(Encoding.PEM))
         cert_file.flush()
 
         # write private key
+        if private_key is None:
+            logging.error("No private key found in PKCS#12 data")
+            raise ValueError("No private key found in PKCS#12 data")
         key_file.write(private_key.private_bytes(
             encoding=Encoding.PEM,
             format=PrivateFormat.TraditionalOpenSSL,
