@@ -154,7 +154,7 @@ AZURE_TABLES_PARTITION_KEY=user
 
 ### Grant Permissions
 
-The relay needs permissions to read from the table.
+The relay needs permissions to read from the table. Internally, it uses DefaultAzureCredential to authenticate to Azure so you can use multiple methods to provide the necessary credentials. More details on DefaultAzureCredential can be found [here](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential).
 
 #### Using Managed Identity (Recommended)
 
@@ -175,6 +175,18 @@ az role assignment create \
   --role "Storage Table Data Reader" \
   --scope /subscriptions/<subscription-id>/resourceGroups/smtp-relay-rg/providers/Microsoft.Storage/storageAccounts/smtprelay1234
 ```
+
+#### Using Environment Variables
+If you cannot use Managed Identity or prefer client credentials, set the following environment variables:
+
+```bash
+AZURE_TENANT_ID=<your-tenant-id>
+AZURE_CLIENT_ID=<your-client-id>
+AZURE_CLIENT_SECRET=<your-client-secret>
+```
+
+For an extensive list of environment variables supported by DefaultAzureCredential (e.g. signing in with a certificate), refer to the [official documentation](https://learn.microsoft.com/en-us/dotnet/api/azure.identity.environmentcredential).
+
 
 ## Table Schema
 
