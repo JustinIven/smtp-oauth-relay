@@ -1,6 +1,6 @@
 {
 	"name": "SMTP OAuth Relay",
-	"image": "mcr.microsoft.com/devcontainers/python:3.13",
+	"image": "mcr.microsoft.com/devcontainers/python:3.14",
 
 	"forwardPorts": [
 		8025
