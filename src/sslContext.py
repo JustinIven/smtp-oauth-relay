@@ -26,7 +26,7 @@ def from_keyvault(azure_key_vault_url, azure_key_vault_cert_name):
     cert_data = base64.b64decode(cert_secret.value)
     # Load the certificate and key from the PKCS#12 data
     try:
-        private_key, certificate, additional_certificates = pkcs12.load_key_and_certificates(cert_data, None)
+        private_key, certificate, _ = pkcs12.load_key_and_certificates(cert_data, None)
     except Exception as e:
         logging.error(f"Failed to load PKCS#12 data: {str(e)}")
         raise

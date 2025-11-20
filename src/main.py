@@ -55,6 +55,10 @@ TLS_KEY_FILEPATH = load_env(
     name='TLS_KEY_FILEPATH',
     default='certs/key.pem'
 )
+TLS_CIPHER_SUITE = load_env(
+    name='TLS_CIPHER_SUITE',
+    default=None # Make it optional
+)
 USERNAME_DELIMITER = load_env(
     name='USERNAME_DELIMITER',
     default='@',
@@ -296,6 +300,12 @@ async def amain():
             logging.error(f"Invalid TLS_SOURCE: {TLS_SOURCE}")
             raise ValueError(f"Invalid TLS_SOURCE: {TLS_SOURCE}")
 
+    # Configure TLS cipher suite if specified
+    if context:
+        if TLS_CIPHER_SUITE:
+            context.set_ciphers(TLS_CIPHER_SUITE)
+
+        logging.info(f"TLS cipher suites used: {", ".join([i['name'] for i in context.get_ciphers()])}")
 
     controller = None
     try:

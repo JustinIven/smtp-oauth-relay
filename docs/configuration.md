@@ -105,6 +105,21 @@ TLS_CERT_FILEPATH=/etc/smtp-relay/certs/fullchain.pem
 TLS_KEY_FILEPATH=/etc/smtp-relay/certs/privkey.pem
 ```
 
+#### TLS_CIPHER_SUITE
+- **Type**: String
+- **Default**: None (uses system defaults)
+- **Description**: Specifies the TLS cipher suite to use for secure connections. Follows [OpenSSL cipher string format](https://docs.openssl.org/3.0/man1/openssl-ciphers/#cipher-list-format). See the following table for all [ciphers](https://wiki.mozilla.org/Security/Cipher_Suites). The used cipher suites will be logged on startup.
+
+> [!NOTE]  
+> Note that the TLS 1.3 cipher suites cannot be disabled or modified.
+
+
+
+**Example**:
+```bash
+TLS_CIPHER_SUITE=DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305
+```
+
 ### Authentication Configuration
 
 #### USERNAME_DELIMITER
