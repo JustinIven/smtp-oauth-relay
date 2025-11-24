@@ -2,8 +2,12 @@ from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import SMTP, Session
 from typing import Any
 
-# Custom logic to handle AUTH commands which are in lowercase (bug in aio-libs/aiosmtpd#542)
+
 class CustomSMTP(SMTP):
+    AuthLoginUsernameChallenge = "Username:" # Some clients expect this format
+    AuthLoginPasswordChallenge = "Password:"
+
+    # Custom logic to handle AUTH commands which are in lowercase (bug in aio-libs/aiosmtpd#542)
     async def smtp_AUTH(self, arg: str) -> None:    
         args = arg.split()
         if len(args) == 2:
