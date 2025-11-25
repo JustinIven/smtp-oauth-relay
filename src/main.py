@@ -221,7 +221,11 @@ class Authenticator:
                 logging.warning("Missing authentication data")
                 return AuthResult(success=False, handled=False, message="535 5.7.8 Authentication credentials missing")
                 
-            login_str = auth_data.login.decode("utf-8")
+            try:
+                login_str = auth_data.login.decode("utf-8")
+            except Exception as e:
+                logging.error(f"Failed to decode login string: {str(e)}")
+                return AuthResult(success=False, handled=False, message="535 5.7.8 Invalid authentication credentials encoding")
             
             # Parse tenant_id and client_id from login string using the configured format
             try:
@@ -258,8 +262,13 @@ class Handler:
                 # some clients won't let you set a from address independent of the auth user. Issue: #36
                 # replace from header in envelope if lookup_from_email is set
                 envel = message_from_bytes(envelope.content)
-                del envel['From']  # delete all occurrences of From header
-                envel['From'] = session.lookup_from_email  # set new From header
+
+                # delete all occurrences of From header
+                while 'From' in envel:
+                    del envel['From']  
+                
+                # set new From header
+                envel['From'] = session.lookup_from_email
 
                 # Send email using Microsoft Graph API
                 success = send_email(session.access_token, envel.as_bytes(), session.lookup_from_email)
@@ -305,13 +314,13 @@ async def amain():
         if TLS_CIPHER_SUITE:
             context.set_ciphers(TLS_CIPHER_SUITE)
 
-        logging.info(f"TLS cipher suites used: {", ".join([i['name'] for i in context.get_ciphers()])}")
+        logging.info(f"TLS cipher suites used: {', '.join([i['name'] for i in context.get_ciphers()])}")
 
     controller = None
     try:
         controller = CustomController(
             Handler(),
-            hostname='',
+            hostname='', # bind dual-stack on all interfaces
             port=8025,
             ident=SERVER_GREETING,
             authenticator=Authenticator(),
