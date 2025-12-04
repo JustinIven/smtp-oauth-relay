@@ -258,10 +258,12 @@ $servicePrincipal = New-MgServicePrincipal -AppId $application.AppId
 
 
 # Grant tenant-wide admin consent
+$msGraphObjectId = (Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'").Id
+
 New-MgServicePrincipalAppRoleAssignment `
   -ServicePrincipalId $servicePrincipal.Id `
   -PrincipalId $servicePrincipal.Id `
-  -ResourceId "7aeb2b66-3434-4d91-b79e-fe5f94c2634b" `
+  -ResourceId $msGraphObjectId `
   -AppRoleId "b633e1c5-b582-4048-a93e-9f11b44c7e96" # Mail.Send
 
 
@@ -284,6 +286,7 @@ Write-Host "Client ID: " -NoNewline
 Write-Host $application.appId -ForegroundColor Green
 Write-Host "Client Secret: " -NoNewline
 Write-Host $application.passwordCredentials[0].secretText -ForegroundColor Green
+
 Write-Host "`nSMTP Username: " -NoNewline
 Write-Host "$($tenantId)@$($application.appId)" -ForegroundColor Yellow
 Write-Host "SMTP Password: " -NoNewline
