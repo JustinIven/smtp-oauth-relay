@@ -1,7 +1,7 @@
 aiosmtpd==1.4.6
 atpublic==7.0.0
 attrs==25.4.0
-azure-core==1.35.1
+azure-core==1.36.0
 azure-data-tables==12.7.0
 azure-identity==1.25.1
 azure-keyvault-secrets==4.10.0
@@ -11,11 +11,11 @@ charset-normalizer==3.4.4
 cryptography==46.0.3
 gitdb==4.0.12
 GitPython==3.1.45
-idna==3.10
+idna==3.11
 isodate==0.7.2
 msal==1.34.0
 msal-extensions==1.3.1
-multidict==6.6.4
+multidict==6.7.0
 propcache==0.4.1
 pycparser==2.23
 PyJWT==2.10.1
