@@ -164,6 +164,10 @@ This relay implements security best practices:
 - 🚫 **Access Policies**: Restrict sender addresses
 - 🔄 **Secret Rotation**: Regular credential rotation support
 
+## Known Limitations
+
+-- Due to a limitation in the Microsoft Graph `user: sendMail` endpoint, emails cannot be sent from alias addresses and will always be sent from the primary mailbox. (Issue [#80](https://github.com/JustinIven/smtp-oauth-relay/issues/80))
+
 ## Community & Support
 
 - 📖 **Documentation**: Comprehensive guides in the `docs/` folder
