@@ -77,6 +77,15 @@ docker run --name smtp-relay -p 8025:8025 \
 - **[Architecture & How It Works](docs/architecture.md)** - Technical implementation details
 - **[FAQ](docs/faq.md)** - Frequently asked questions
 
+## Current Capabilities
+
+- Accepts SMTP AUTH LOGIN/PLAIN and relays mail via Microsoft Graph
+- Supports multi-tenant credentials (UUID or base64url) and Azure Tables lookup
+- Optional sender remapping, recipient remapping, and failure notifications by domain
+- TLS via file-based certs or Azure Key Vault (or TLS off for dev)
+- Stateless deployment-friendly design for scaling
+- Per-mailbox Graph API rate limiting and concurrency control (configurable)
+
 ## Features
 
 ### Authentication Options
@@ -152,6 +161,40 @@ printer1@lookup
 - Azure Key Vault (for certificate management)
 - Azure Table Storage (for credential lookup)
 - Managed Identity (for Azure services)
+
+## Development
+
+### Tooling
+
+Create a virtual environment, install dependencies, and run checks:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+On Windows, activate with:
+
+```bash
+.venv\\Scripts\\activate
+```
+
+```bash
+ruff check .
+pytest -q
+```
+
+### Pre-commit hooks
+
+Install hooks and run them on demand:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+Note: the hooks are configured to use the local `.venv`, so create it first.
 
 ## Security
 

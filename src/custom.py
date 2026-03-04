@@ -1,7 +1,10 @@
+import logging
+from typing import Any
+
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import SMTP, Session, TLSSetupException
-from typing import Any
-import logging
+
+from constants import SMTP_TLS_NOT_AVAILABLE
 
 
 class CustomController(Controller):
@@ -10,11 +13,13 @@ class CustomController(Controller):
 
 
 class CustomSMTP(SMTP):
-    AuthLoginUsernameChallenge = "Username:" # Some clients expect this format
+    AuthLoginUsernameChallenge = "Username:"  # Some clients expect this format
     AuthLoginPasswordChallenge = "Password:"
 
     # Custom logic to handle AUTH commands which are in lowercase (bug in aio-libs/aiosmtpd#542)
-    async def smtp_AUTH(self, arg: str) -> None:    
+    async def smtp_AUTH(self, arg: str) -> None:
+        if not arg:
+            return await super().smtp_AUTH(arg)
         args = arg.split()
         if len(args) == 2:
             args[0] = args[0].upper()
@@ -27,13 +32,14 @@ class CustomSMTP(SMTP):
             return await super().smtp_STARTTLS(arg)
         except TLSSetupException:
             if self.tls_context:
-                logging.error(f"TLS handshake with client failed.")
-
+                logging.error("TLS handshake with client failed.")
+            return SMTP_TLS_NOT_AVAILABLE
     
     def _create_session(self) -> Session:
         return CustomSession(self.loop)
-        
-# Custom Session class to remove deprecation warnings related to login_data attribute (bug in aio-libs/aiosmtpd#347)
+
+# Custom Session class to remove deprecation warnings related to the login_data
+# attribute (bug in aio-libs/aiosmtpd#347).
 class CustomSession(Session):
     @property
     def login_data(self) -> Any:

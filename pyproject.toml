@@ -1,0 +1,12 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+  ".git",
+  ".venv",
+  ".pytest_cache",
+  "__pycache__",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

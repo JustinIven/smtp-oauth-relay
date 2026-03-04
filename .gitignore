@@ -1,3 +1,4 @@
 __pycache__
 certs
 .pytest_cache
+.coverage

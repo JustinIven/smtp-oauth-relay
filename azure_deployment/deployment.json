@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.38.33.27573",
-      "templateHash": "5517853380781368327"
+      "templateHash": "16353557341089312546"
     }
   },
   "parameters": {
@@ -29,47 +29,108 @@
         "description": "Container image version to deploy"
       }
     },
-    "requireTls": {
-      "type": "bool",
-      "defaultValue": true,
-      "metadata": {
-        "description": "Require TLS for SMTP connections"
-      }
-    },
-    "envVars": {
-      "type": "object",
-      "defaultValue": {},
-      "metadata": {
-        "description": "SMTP OAuth Relay environment variables"
-      }
-    },
-    "lookupTableUrl": {
+    "tlsSource": {
       "type": "string",
-      "defaultValue": "",
+      "defaultValue": "off",
+      "allowedValues": [
+        "off",
+        "keyvault"
+      ],
       "metadata": {
-        "description": "URL of the Azure Table to use for lookup"
+        "description": "TLS source for SMTP connections"
       }
     },
     "tlsCertKeyVaultUrl": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Key Vault URL where the TLS certificate is stored"
+        "description": "Key Vault URL where the TLS certificate is stored (required when tlsSource=keyvault)"
       }
     },
     "tlsCertName": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Name of the TLS certificate to use"
+        "description": "Name of the TLS certificate to use (required when tlsSource=keyvault)"
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "defaultValue": "[toLower(format('smtprelay{0}', uniqueString(resourceGroup().id)))]",
+      "metadata": {
+        "description": "Name of the Storage Account to create for Azure Tables (ignored if lookupTableUrl is set)"
+      }
+    },
+    "tableName": {
+      "type": "string",
+      "defaultValue": "users",
+      "metadata": {
+        "description": "Table name to create for Azure Tables (ignored if lookupTableUrl is set)"
+      }
+    },
+    "lookupTableUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "URL of an existing Azure Table to use instead of creating one"
+      }
+    },
+    "envVars": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Additional SMTP OAuth Relay environment variables"
+      }
+    },
+    "storageTableDataReaderRoleId": {
+      "type": "string",
+      "defaultValue": "0a9a7e1f-b4e0-4ad0-8b83-1ef0a56a02ff",
+      "metadata": {
+        "description": "Role definition ID for Storage Table Data Reader"
       }
     }
   },
   "variables": {
     "containerImage": "[format('ghcr.io/justiniven/smtp-oauth-relay:{0}', parameters('containerVersion'))]",
-    "finalEnvVars": "[shallowMerge(createArray(createObject('REQUIRE_TLS', string(parameters('requireTls'))), if(parameters('requireTls'), createObject('TLS_SOURCE', if(and(not(equals(parameters('tlsCertKeyVaultUrl'), '')), not(equals(parameters('tlsCertName'), ''))), 'keyvault', 'file')), createObject()), if(not(equals(parameters('lookupTableUrl'), '')), createObject('AZURE_TABLES_URL', parameters('lookupTableUrl')), createObject()), if(not(equals(parameters('tlsCertKeyVaultUrl'), '')), createObject('AZURE_KEY_VAULT_URL', parameters('tlsCertKeyVaultUrl')), createObject()), if(not(equals(parameters('tlsCertName'), '')), createObject('AZURE_KEY_VAULT_CERT_NAME', parameters('tlsCertName')), createObject()), parameters('envVars')))]"
+    "useExistingTable": "[not(equals(parameters('lookupTableUrl'), ''))]",
+    "tableUrl": "[if(variables('useExistingTable'), parameters('lookupTableUrl'), format('https://{0}.table.core.windows.net/{1}', parameters('storageAccountName'), parameters('tableName')))]",
+    "requireTls": "[not(equals(parameters('tlsSource'), 'off'))]",
+    "finalEnvVars": "[shallowMerge(createArray(createObject('REQUIRE_TLS', string(variables('requireTls'))), createObject('TLS_SOURCE', parameters('tlsSource')), createObject('AZURE_TABLES_URL', variables('tableUrl')), if(equals(parameters('tlsSource'), 'keyvault'), createObject('AZURE_KEY_VAULT_URL', parameters('tlsCertKeyVaultUrl'), 'AZURE_KEY_VAULT_CERT_NAME', parameters('tlsCertName')), createObject()), parameters('envVars')))]"
   },
   "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('storageAccountName')]",
+      "condition": "[not(variables('useExistingTable'))]",
+      "location": "[parameters('location')]",
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "allowBlobPublicAccess": false,
+        "minimumTlsVersion": "TLS1_2"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/tableServices",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default', parameters('storageAccountName'))]",
+      "condition": "[not(variables('useExistingTable'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/tableServices/tables",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default/{1}', parameters('storageAccountName'), parameters('tableName'))]",
+      "condition": "[not(variables('useExistingTable'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/tableServices', parameters('storageAccountName'), 'default')]"
+      ]
+    },
     {
       "type": "Microsoft.ContainerInstance/containerGroups",
       "apiVersion": "2023-05-01",
@@ -123,6 +184,32 @@
           ]
         }
       }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), resourceId('Microsoft.ContainerInstance/containerGroups', parameters('containerGroupName')), 'table-reader')]",
+      "condition": "[not(variables('useExistingTable'))]",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+        "[resourceId('Microsoft.ContainerInstance/containerGroups', parameters('containerGroupName'))]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('storageTableDataReaderRoleId'))]",
+        "principalId": "[reference(resourceId('Microsoft.ContainerInstance/containerGroups', parameters('containerGroupName')), '2023-05-01', 'Full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      }
     }
-  ]
+  ],
+  "outputs": {
+    "azureTableUrl": {
+      "type": "string",
+      "value": "[variables('tableUrl')]"
+    },
+    "containerGroupFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ContainerInstance/containerGroups', parameters('containerGroupName')), '2023-05-01').ipAddress.fqdn]"
+    }
+  }
 }

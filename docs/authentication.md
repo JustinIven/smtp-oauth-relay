@@ -276,10 +276,10 @@ EHLO test.local
 
 # Start authentication
 AUTH LOGIN
-# Server responds with: 334 VXNlciBOYW1lAA==
+# Server responds with: 334 VXNlcm5hbWU6
 # Send base64-encoded username
 YXBwMUBsb29rdXA=
-# Server responds with: 334 UGFzc3dvcmQA
+# Server responds with: 334 UGFzc3dvcmQ6
 # Send base64-encoded password
 bXktc2VjcmV0
 # Server responds with: 235 2.7.0 Authentication successful

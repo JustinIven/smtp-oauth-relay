@@ -19,9 +19,13 @@ Click the button below to deploy the SMTP OAuth Relay to Azure Container Instanc
 This will:
 - Create an Azure Container Instance with the SMTP OAuth Relay
 - Set up a managed identity for the container
-- Configure the relay with default settings
+- Create an Azure Storage Account and Table for configuration
+- Assign Storage Table Data Reader to the managed identity
+- Configure the relay with minimal settings and Azure Tables
 - Optionally integrate with Azure Key Vault for TLS certificates
-- Optionally integrate with Azure Table Storage for user mapping
+
+By default, the template disables TLS. To enable it, set `tlsSource=keyvault` and
+provide `tlsCertKeyVaultUrl` and `tlsCertName`.
 
 **Prerequisites:**
 - An active Azure subscription
@@ -29,9 +33,10 @@ This will:
 
 **After deployment:**
 1. Note the FQDN of the container instance
-2. Add RBAC permissions for the managed identity to access Key Vault (`Key Vault Certificate User`) and/or Table Storage (`Storage Table Data Reader`) if used
-3. [Configure your Azure/Entra ID application](azure-setup.md)
-4. [Configure your SMTP clients](client-setup.md)
+2. If using Key Vault for TLS, grant the managed identity access (`Key Vault Certificate User` or equivalent)
+3. If you supplied `lookupTableUrl`, grant the managed identity `Storage Table Data Reader` on the target storage account
+4. [Configure your Azure/Entra ID application](azure-setup.md)
+5. [Configure your SMTP clients](client-setup.md)
 
 For more control over the deployment, see the [Azure Container Instances](#azure-container-instances) section below.
 
@@ -149,6 +154,7 @@ az container create \
     LOG_LEVEL=INFO \
     TLS_SOURCE=keyvault \
     REQUIRE_TLS=true \
+    AZURE_TABLES_URL=https://smtprelay1234.table.core.windows.net/users \
     AZURE_KEY_VAULT_URL=https://your-keyvault.vault.azure.net/ \
     AZURE_KEY_VAULT_CERT_NAME=smtp-relay-cert 
 ```
@@ -158,11 +164,17 @@ az container create \
 The repository includes Bicep templates for Azure deployment in the `azure_deployment/` directory:
 
 ```bash
-# Deploy using the simple template
+# Deploy using the template
 az deployment group create \
-  --resource-group ssmtp-relay-rg \
-  --template-file azure_deployment/deploymentSimple.bicep \
+  --resource-group smtp-relay-rg \
+  --template-file azure_deployment/deployment.bicep \
   --parameters location=switzerlandnorth
+
+# Optional: use an existing table and enable TLS via Key Vault
+# --parameters lookupTableUrl=https://storageaccount.table.core.windows.net/users \
+#              tlsSource=keyvault \
+#              tlsCertKeyVaultUrl=https://your-keyvault.vault.azure.net/ \
+#              tlsCertName=smtp-relay-cert
 ```
 
 ## Kubernetes Deployment

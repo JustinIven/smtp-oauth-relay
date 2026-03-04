@@ -1,5 +1,5 @@
 // SMTP OAuth Relay Azure Deployment
-// Deploys: Azure Container Instance, Key Vault, Storage Account with Table
+// Deploys: Azure Container Instance, Storage Account with Table (optional)
 
 @description('Location for all resources')
 param location string = resourceGroup().location
@@ -10,33 +10,74 @@ param containerGroupName string
 @description('Container image version to deploy')
 param containerVersion string = '1'
 
-@description('Require TLS for SMTP connections')
-param requireTls bool = true
+@allowed([
+  'off'
+  'keyvault'
+])
+@description('TLS source for SMTP connections')
+param tlsSource string = 'off'
 
-@description('SMTP OAuth Relay environment variables')
-param envVars object = {}
-
-
-@description('URL of the Azure Table to use for lookup')
-param lookupTableUrl string = ''
-
-@description('Key Vault URL where the TLS certificate is stored')
+@description('Key Vault URL where the TLS certificate is stored (required when tlsSource=keyvault)')
 param tlsCertKeyVaultUrl string = ''
 
-@description('Name of the TLS certificate to use')
+@description('Name of the TLS certificate to use (required when tlsSource=keyvault)')
 param tlsCertName string = ''
 
+@description('Name of the Storage Account to create for Azure Tables (ignored if lookupTableUrl is set)')
+param storageAccountName string = toLower('smtprelay${uniqueString(resourceGroup().id)}')
+
+@description('Table name to create for Azure Tables (ignored if lookupTableUrl is set)')
+param tableName string = 'users'
+
+@description('URL of an existing Azure Table to use instead of creating one')
+param lookupTableUrl string = ''
+
+@description('Additional SMTP OAuth Relay environment variables')
+param envVars object = {}
+
+@description('Role definition ID for Storage Table Data Reader')
+param storageTableDataReaderRoleId string = '0a9a7e1f-b4e0-4ad0-8b83-1ef0a56a02ff'
 
 var containerImage = 'ghcr.io/justiniven/smtp-oauth-relay:${containerVersion}'
+var useExistingTable = lookupTableUrl != ''
+var tableUrl = useExistingTable
+  ? lookupTableUrl
+  : 'https://${storageAccount.name}.table.core.windows.net/${tableName}'
+var requireTls = tlsSource != 'off'
 var finalEnvVars = {
   REQUIRE_TLS: string(requireTls)
-  ...(requireTls ? { TLS_SOURCE: (tlsCertKeyVaultUrl != '' && tlsCertName != '') ? 'keyvault' : 'file' } : {})
-  ...(lookupTableUrl != '' ? { AZURE_TABLES_URL: lookupTableUrl } : {})
-  ...(tlsCertKeyVaultUrl != '' ? { AZURE_KEY_VAULT_URL: tlsCertKeyVaultUrl } : {})
-  ...(tlsCertName != '' ? { AZURE_KEY_VAULT_CERT_NAME: tlsCertName } : {})
+  TLS_SOURCE: tlsSource
+  AZURE_TABLES_URL: tableUrl
+  ...(tlsSource == 'keyvault' ? {
+    AZURE_KEY_VAULT_URL: tlsCertKeyVaultUrl
+    AZURE_KEY_VAULT_CERT_NAME: tlsCertName
+  } : {})
   ...envVars
 }
 
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = if (!useExistingTable) {
+  name: storageAccountName
+  location: location
+  kind: 'StorageV2'
+  sku: {
+    name: 'Standard_LRS'
+  }
+  properties: {
+    allowBlobPublicAccess: false
+    minimumTlsVersion: 'TLS1_2'
+  }
+}
+
+resource tableService 'Microsoft.Storage/storageAccounts/tableServices@2023-01-01' = if (!useExistingTable) {
+  name: '${storageAccount.name}/default'
+}
+
+resource lookupTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = if (!useExistingTable) {
+  name: '${storageAccount.name}/default/${tableName}'
+  dependsOn: [
+    tableService
+  ]
+}
 
 resource containerGroup 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   name: containerGroupName
@@ -86,3 +127,19 @@ resource containerGroup 'Microsoft.ContainerInstance/containerGroups@2023-05-01'
     }
   }
 }
+
+resource tableReaderRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!useExistingTable) {
+  name: guid(storageAccount.id, containerGroup.id, 'table-reader')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      storageTableDataReaderRoleId
+    )
+    principalId: containerGroup.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+output azureTableUrl string = tableUrl
+output containerGroupFqdn string = containerGroup.properties.ipAddress.fqdn
