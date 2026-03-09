@@ -26,4 +26,4 @@ smmap==5.0.2
 typing_extensions==4.15.0
 urllib3==2.6.3
 wheel==0.46.3
-yarl==1.22.0
+yarl==1.23.0
