@@ -251,40 +251,81 @@ class Authenticator:
 
 class Handler:
     async def handle_DATA(self, server, session, envelope):
+        logging.debug(f"SMTP envelope: mail_from={envelope.mail_from}, rcpt_tos={envelope.rcpt_tos}")
+
+        if not hasattr(session, 'access_token'):
+            logging.error("No access token available in session")
+            return "530 5.7.0 Authentication required"
+
         try:
-            logging.info(f"Message from {envelope.mail_from} to {envelope.rcpt_tos}")
-
-            if not hasattr(session, 'access_token'):
-                logging.error("No access token available in session")
-                return "530 5.7.0 Authentication required"
-
-            if session.lookup_from_email:
-                # some clients won't let you set a from address independent of the auth user. Issue: #36
-                # replace from header in envelope if lookup_from_email is set
-                envel = message_from_bytes(envelope.content)
-
-                # delete all occurrences of From header
-                while 'From' in envel:
-                    del envel['From']  
-                
-                # set new From header
-                envel['From'] = session.lookup_from_email
-
-                # Send email using Microsoft Graph API
-                success = send_email(session.access_token, envel.as_bytes(), session.lookup_from_email)
-
-            else:
-                # Send email using Microsoft Graph API
-                success = send_email(session.access_token, envelope.content, envelope.mail_from)
-
-            if success:
-                return "250 OK"
-            else:
-                return "554 Transaction failed"
-                
+            raw_envelope = message_from_bytes(envelope.content)
         except Exception as e:
-            logging.exception(f"Error handling DATA command: {str(e)}")
+            logging.exception("Failed to parse incoming message bytes")
             return "554 Transaction failed"
+
+        # apply any necessary fixes for known issues
+        self._fix_missing_bcc(raw_envelope, envelope.rcpt_tos)
+        mail_from = self._apply_from_override(raw_envelope, session, envelope.mail_from)
+
+        success = send_email(session.access_token, raw_envelope.as_bytes(), mail_from)
+
+        if success:
+            logging.info("DATA command processed successfully")
+            return "250 OK"
+
+        logging.error("DATA command failed during send_email")
+        return "554 Transaction failed"
+
+    def _fix_missing_bcc(self, raw_envelope, rcpt_tos):
+        """Ensure Bcc header contains any recipients missing from To/Cc.
+
+        Issue #82: some clients do not include Bcc recipients in the headers
+        at all, which causes Graph to drop them. The workaround is to compute
+        which rcpt_tos are not already in To/Cc and add them as a Bcc header.
+        """
+
+        to_headers = raw_envelope.get_all('To', [])
+        cc_headers = raw_envelope.get_all('Cc', [])
+        total_headers = len(to_headers) + len(cc_headers)
+        logging.debug(f"Headers count - To: {len(to_headers)}, Cc: {len(cc_headers)}")
+
+        if len(rcpt_tos) <= total_headers:
+            logging.debug("No missing recipients detected; skipping Bcc fixup")
+            return
+
+        header_recipients = set(to_headers + cc_headers)
+        missing = set(rcpt_tos) - header_recipients
+        if not missing:
+            logging.debug("Mismatch between rcpt_tos and headers, but no missing recipients")
+            return
+        logging.info(f"Adding Bcc header for missing recipients: {sorted(missing)}")
+        # preserve any existing Bcc header by appending if present
+        existing_bcc = raw_envelope.get_all('Bcc', [])
+        combined = list(existing_bcc) + sorted(missing)
+        raw_envelope['Bcc'] = ", ".join(combined)
+
+    def _apply_from_override(self, raw_envelope, session, default_mail_from):
+        """When lookup_from_email is configured replace the From header.
+
+        Some SMTP clients (issue #36) do not allow the From address to differ
+        from the authenticated user.  We drop any existing From headers and
+        insert the value stored in ``session.lookup_from_email`` if set.
+        Returns the mail_from value that should be supplied to Graph.
+        """
+
+        if not getattr(session, 'lookup_from_email', None):
+            logging.debug("No from-override configured; using envelope.mail_from")
+            return default_mail_from
+
+        new_from = session.lookup_from_email
+        logging.info(f"Overriding From header to '{new_from}' per lookup_from_email setting")
+
+        # remove all existing From headers
+        while 'From' in raw_envelope:
+            del raw_envelope['From']
+
+        raw_envelope['From'] = new_from
+        return new_from
 
 
 
