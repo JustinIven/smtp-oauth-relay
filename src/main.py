@@ -5,7 +5,8 @@ import base64
 import os
 import re
 import uuid
-from email import message_from_bytes
+from email import message_from_bytes, policy
+from quopri import decodestring
 
 from custom import CustomController
 from aiosmtpd.smtp import AuthResult
@@ -182,6 +183,37 @@ def get_access_token(tenant_id: str, client_id: str, client_secret: str) -> str:
             logging.error(f"Response status: {e.response.status_code}, Response body: {e.response.text}")
         raise
 
+def _sanitize_mime_encoding(raw_message: bytes) -> bytes:
+    """
+    Convert quoted-printable MIME parts to base64 before sending to Graph API.
+    """
+    def _convert_parts(msg) -> bool:
+        modified = False
+        if msg.is_multipart():
+            for part in msg.get_payload():
+                if _convert_parts(part):
+                    modified = True
+        else:
+            if msg.get('Content-Transfer-Encoding', '').lower().strip() == 'quoted-printable':
+                qp_payload = msg.get_payload(decode=False)
+                if isinstance(qp_payload, str):
+                    decoded = decodestring(qp_payload.encode('ascii', errors='surrogateescape'))
+                else:
+                    decoded = decodestring(qp_payload)
+                msg.set_payload(base64.encodebytes(decoded).decode('ascii'))
+                del msg['Content-Transfer-Encoding']
+                msg['Content-Transfer-Encoding'] = 'base64'
+                modified = True
+        return modified
+
+    try:
+        msg = message_from_bytes(raw_message, policy.compat32)
+        if _convert_parts(msg):
+            return msg.as_bytes()
+    except Exception:
+        pass
+    return raw_message
+
 
 def send_email(access_token: str, body: bytes, from_email: str) -> bool:
     url = f"https://graph.microsoft.com/v1.0/users/{from_email}/sendMail"
@@ -191,7 +223,7 @@ def send_email(access_token: str, body: bytes, from_email: str) -> bool:
     }
     
     try:
-        data = base64.b64encode(body)
+        data = base64.b64encode(_sanitize_mime_encoding(body))
         logging.debug(f"Sending email from {from_email}")
         
         response = requests.post(url, data=data, headers=headers)
