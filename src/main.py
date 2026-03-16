@@ -297,8 +297,9 @@ class Handler:
 
         # apply any necessary fixes for known issues
         fixes_applied = False
-        fixes_applied = self._fix_missing_bcc(raw_envelope, envelope.rcpt_tos)
-        fixes_applied, mail_from = self._apply_from_override(raw_envelope, session, envelope.mail_from)
+        fixes_applied |= self._fix_missing_bcc(raw_envelope, envelope.rcpt_tos)
+        override_applied, mail_from = self._apply_from_override(raw_envelope, session, envelope.mail_from)
+        fixes_applied |= override_applied
 
         if fixes_applied:
             logging.debug("Applied fixes to email headers before sending")
