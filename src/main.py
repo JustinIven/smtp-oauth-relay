@@ -207,7 +207,7 @@ def _sanitize_mime_encoding(raw_message: bytes) -> bytes:
         return modified
 
     try:
-        msg = message_from_bytes(raw_message, policy.compat32)
+        msg = message_from_bytes(raw_message, policy=policy.compat32)
         if _convert_parts(msg):
             return msg.as_bytes()
     except Exception:
@@ -296,10 +296,15 @@ class Handler:
             return "554 Transaction failed"
 
         # apply any necessary fixes for known issues
-        self._fix_missing_bcc(raw_envelope, envelope.rcpt_tos)
-        mail_from = self._apply_from_override(raw_envelope, session, envelope.mail_from)
+        fixes_applied = False
+        fixes_applied = self._fix_missing_bcc(raw_envelope, envelope.rcpt_tos)
+        fixes_applied, mail_from = self._apply_from_override(raw_envelope, session, envelope.mail_from)
 
-        success = send_email(session.access_token, raw_envelope.as_bytes(), mail_from)
+        if fixes_applied:
+            logging.debug("Applied fixes to email headers before sending")
+            success = send_email(session.access_token, raw_envelope.as_bytes(), mail_from)
+        else:
+            success = send_email(session.access_token, envelope.content, envelope.mail_from)
 
         if success:
             logging.info("DATA command processed successfully")
@@ -308,8 +313,9 @@ class Handler:
         logging.error("DATA command failed during send_email")
         return "554 Transaction failed"
 
-    def _fix_missing_bcc(self, raw_envelope, rcpt_tos):
+    def _fix_missing_bcc(self, raw_envelope, rcpt_tos) -> bool:
         """Ensure Bcc header contains any recipients missing from To/Cc.
+        Return True if a fix was applied, False otherwise.
 
         Issue #82: some clients do not include Bcc recipients in the headers
         at all, which causes Graph to drop them. The workaround is to compute
@@ -323,21 +329,24 @@ class Handler:
 
         if len(rcpt_tos) <= total_headers:
             logging.debug("No missing recipients detected; skipping Bcc fixup")
-            return
+            return False
 
         header_recipients = set(to_headers + cc_headers)
         missing = set(rcpt_tos) - header_recipients
         if not missing:
             logging.debug("Mismatch between rcpt_tos and headers, but no missing recipients")
-            return
+            return False
+        
         logging.info(f"Adding Bcc header for missing recipients: {sorted(missing)}")
         # preserve any existing Bcc header by appending if present
         existing_bcc = raw_envelope.get_all('Bcc', [])
         combined = list(existing_bcc) + sorted(missing)
         raw_envelope['Bcc'] = ", ".join(combined)
+        return True
 
-    def _apply_from_override(self, raw_envelope, session, default_mail_from):
+    def _apply_from_override(self, raw_envelope, session, default_mail_from) -> tuple[bool, str]:
         """When lookup_from_email is configured replace the From header.
+        Returns a a tuple of (was_overridden, new_mail_from). If no override was applied, returns (False, default_mail_from).
 
         Some SMTP clients (issue #36) do not allow the From address to differ
         from the authenticated user.  We drop any existing From headers and
@@ -347,7 +356,7 @@ class Handler:
 
         if not getattr(session, 'lookup_from_email', None):
             logging.debug("No from-override configured; using envelope.mail_from")
-            return default_mail_from
+            return False, default_mail_from
 
         new_from = session.lookup_from_email
         logging.info(f"Overriding From header to '{new_from}' per lookup_from_email setting")
@@ -357,7 +366,7 @@ class Handler:
             del raw_envelope['From']
 
         raw_envelope['From'] = new_from
-        return new_from
+        return True, new_from
 
 
 
