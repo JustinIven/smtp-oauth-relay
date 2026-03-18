@@ -187,14 +187,19 @@ def _sanitize_mime_encoding(raw_message: bytes) -> bytes:
     """
     Convert quoted-printable MIME parts to base64 before sending to Graph API.
     """
-    def _convert_parts(msg) -> bool:
+
+    def _convert_parts(msg, location: str = 'root') -> bool:
         modified = False
         if msg.is_multipart():
-            for part in msg.get_payload():
-                if _convert_parts(part):
+            for index, part in enumerate(msg.get_payload()):
+                if _convert_parts(part, f"{location}.{index}"):
                     modified = True
         else:
             if msg.get('Content-Transfer-Encoding', '').lower().strip() == 'quoted-printable':
+                logging.debug(
+                    f"Converting quoted-printable MIME part at {location} "
+                    f"(content-type={msg.get_content_type()})"
+                )
                 qp_payload = msg.get_payload(decode=False)
                 if isinstance(qp_payload, str):
                     decoded = decodestring(qp_payload.encode('ascii', errors='surrogateescape'))
@@ -209,9 +214,11 @@ def _sanitize_mime_encoding(raw_message: bytes) -> bytes:
     try:
         msg = message_from_bytes(raw_message, policy=policy.compat32)
         if _convert_parts(msg):
+            logging.info("Sanitized MIME encoding")
             return msg.as_bytes()
+        logging.debug("No quoted-printable MIME parts found; message unchanged")
     except Exception:
-        pass
+        logging.exception("Failed to sanitize MIME encoding; sending original raw message")
     return raw_message
 
 
