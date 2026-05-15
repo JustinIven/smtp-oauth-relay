@@ -2,7 +2,6 @@ import asyncio
 import logging
 import requests
 import base64
-import os
 import re
 import uuid
 from email import message_from_bytes, policy
@@ -11,76 +10,23 @@ from quopri import decodestring
 from custom import CustomController
 from aiosmtpd.smtp import AuthResult
 
-from azure.identity import DefaultAzureCredential
-from azure.data.tables import TableClient
-
 import sslContext
+import azure_table
+from env import (
+    LOG_LEVEL,
+    TLS_SOURCE,
+    REQUIRE_TLS,
+    SERVER_GREETING,
+    TLS_CERT_FILEPATH,
+    TLS_KEY_FILEPATH,
+    TLS_CIPHER_SUITE,
+    USERNAME_DELIMITER,
+    AZURE_KEY_VAULT_URL,
+    AZURE_KEY_VAULT_CERT_NAME,
+    AZURE_TABLES_FORCE_USAGE
+)
 
 
-# Load configuration from environment variables
-def load_env(name, default=None, sanitize=lambda x: x, valid_values=None, convert=lambda x: x):
-    value = sanitize(os.getenv(name, default))
-    if valid_values and value not in valid_values:
-        raise ValueError(f"Invalid {name}: {value}")
-    return convert(value)
-
-# Configuration
-LOG_LEVEL = load_env(
-    name='LOG_LEVEL',
-    default='WARNING',
-    valid_values=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-    sanitize=lambda x: x.upper()
-)
-TLS_SOURCE = load_env(
-    name='TLS_SOURCE', 
-    default='file', 
-    valid_values=['off', 'file', 'keyvault'], 
-    sanitize=lambda x: x.lower(),
-)
-REQUIRE_TLS = load_env(
-    name='REQUIRE_TLS', 
-    default='true', 
-    valid_values=['true', 'false'], 
-    sanitize=lambda x: x.lower(),
-    convert=lambda x: x == 'true'
-)
-SERVER_GREETING = load_env(
-    name='SERVER_GREETING', 
-    default='Microsoft Graph SMTP OAuth Relay'
-)
-TLS_CERT_FILEPATH = load_env(
-    name='TLS_CERT_FILEPATH',
-    default='certs/cert.pem'
-)
-TLS_KEY_FILEPATH = load_env(
-    name='TLS_KEY_FILEPATH',
-    default='certs/key.pem'
-)
-TLS_CIPHER_SUITE = load_env(
-    name='TLS_CIPHER_SUITE',
-    default=None # Make it optional
-)
-USERNAME_DELIMITER = load_env(
-    name='USERNAME_DELIMITER',
-    default='@',
-    valid_values=['@', ':', '|']
-)
-AZURE_KEY_VAULT_URL = load_env(
-    name='AZURE_KEY_VAULT_URL',
-    default=None,  # Make it optional
-)
-AZURE_KEY_VAULT_CERT_NAME = load_env(
-    name='AZURE_KEY_VAULT_CERT_NAME',
-    default=None,  # Make it optional
-)
-AZURE_TABLES_URL = load_env(
-    name='AZURE_TABLES_URL',
-    default=None,  # Make it optional
-)
-AZURE_TABLES_PARTITION_KEY = load_env(
-    name='AZURE_TABLES_PARTITION_KEY',
-    default='user'
-)
 
 
 def decode_uuid_or_base64url(input_str: str) -> str:
@@ -100,37 +46,6 @@ def decode_uuid_or_base64url(input_str: str) -> str:
     except Exception:
         raise ValueError(f"Invalid base64url encoding in input '{input_str}'")
 
-
-def lookup_user(lookup_id: str) -> tuple[str, str, str|None]:
-    """
-    Search in Azure Table for user information based on the lookup_id (RowKey).
-    Returns (tenant_id, client_id, from_email) or raises ValueError if not found.
-    """
-    if not AZURE_TABLES_URL:
-        raise ValueError("AZURE_TABLES_URL environment variable not set")
-
-    try:
-        credential = DefaultAzureCredential()
-        with TableClient.from_table_url(table_url=AZURE_TABLES_URL, credential=credential) as client: # pyright: ignore[reportArgumentType]
-            entities = client.query_entities(query_filter=f"PartitionKey eq '{AZURE_TABLES_PARTITION_KEY}' and RowKey eq '{lookup_id}'")
-            entity = None
-            for i in entities:
-                entity = i
-                break
-    except Exception as e:
-        raise RuntimeError(f"Failed to query Azure Table: {str(e)}") from e
-
-    if not entity:
-        raise ValueError(f"No entity found for RowKey '{lookup_id}'")
-
-    tenant_id = entity.get('tenant_id')
-    client_id = entity.get('client_id')
-    from_email = entity.get('from_email')
-
-    if not tenant_id or not client_id:
-        raise ValueError(f"Entity for RowKey '{lookup_id}' is missing tenant_id or client_id")
-
-    return tenant_id, client_id, from_email
 
 
 def parse_username(username: str) -> tuple[str, str, str|None]:
@@ -154,10 +69,18 @@ def parse_username(username: str) -> tuple[str, str, str|None]:
     
     # check if the second part hints a user stored in the lookup table
     if parts[1] == 'lookup':
-        return lookup_user(parts[0])
+        return azure_table.lookup_user(parts[0])
 
     # else return both parts decoded
-    return decode_uuid_or_base64url(parts[0]), decode_uuid_or_base64url(parts[1]), None
+    tenant_id = decode_uuid_or_base64url(parts[0])
+    client_id = decode_uuid_or_base64url(parts[1])
+
+    # If AZURE_TABLES_FORCE_USAGE is enabled, verify the user exists in the table
+    if AZURE_TABLES_FORCE_USAGE:
+        from_email = azure_table.verify_user_in_table(tenant_id, client_id)
+        return tenant_id, client_id, from_email
+
+    return tenant_id, client_id, None
 
 
 def get_access_token(tenant_id: str, client_id: str, client_secret: str) -> str:
@@ -405,6 +328,11 @@ async def amain():
             context.set_ciphers(TLS_CIPHER_SUITE)
 
         logging.info(f"TLS cipher suites used: {', '.join([i['name'] for i in context.get_ciphers()])}")
+
+    # If AZURE_TABLES_FORCE_USAGE is enabled, verify table access at startup
+    if AZURE_TABLES_FORCE_USAGE:
+        azure_table.verify_table_access()
+        logging.info("Azure Table access verified (AZURE_TABLES_FORCE_USAGE=true)")
 
     controller = None
     try:

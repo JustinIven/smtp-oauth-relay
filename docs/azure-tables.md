@@ -22,6 +22,7 @@ This is useful for:
 - Overriding sender addresses for clients that don't allow custom From addresses
 - Simplifying credentials for devices with limited input
 - Centralizing credential management
+- Restricting relay usage to authorized senders only (with `AZURE_TABLES_FORCE_USAGE=true`)
 
 ## Benefits
 
@@ -54,6 +55,17 @@ Some clients (like certain network printers) don't allow setting a custom From a
 # Table entry includes: from_email = "printer@example.com"
 # Email is sent from "printer@example.com" regardless of client's From header
 ```
+
+### Enforcing Authorized Senders
+
+Set `AZURE_TABLES_FORCE_USAGE=true` to use the Azure Table as an allowlist. When enabled:
+
+- **At startup**: the relay verifies it can access the Azure Table. If the table is unreachable, the relay fails to start.
+- **During authentication**: every sender is checked against the table. If no matching entry exists (by `tenant_id` and `client_id`), the relay rejects the request.
+- Users authenticating with the `lookup_id@lookup` format are validated as before (by RowKey lookup).
+- Users authenticating with the direct `tenant_id@client_id` format are additionally verified against the table.
+
+This allows you to maintain a central source of truth about who can use the relay.
 
 ## Setup
 

@@ -208,6 +208,17 @@ See [Azure Tables Integration](azure-tables.md) for detailed setup.
 AZURE_TABLES_PARTITION_KEY=smtp-users
 ```
 
+#### AZURE_TABLES_FORCE_USAGE
+- **Type**: Boolean
+- **Default**: `false`
+- **Valid Values**: `true`, `false` (case-insensitive)
+- **Description**: When enabled, forces all senders to have a valid entry in the Azure Table. At startup the relay verifies it can reach the table (fails if it cannot). During authentication every sender is checked against the table — if no matching entry exists, the relay rejects the request. Requires `AZURE_TABLES_URL` to be set.
+
+**Example**:
+```bash
+AZURE_TABLES_FORCE_USAGE=true
+```
+
 ## Configuration Examples
 
 ### Production Configuration (File-based TLS)
@@ -255,6 +266,7 @@ AZURE_KEY_VAULT_URL=https://my-keyvault.vault.azure.net/
 AZURE_KEY_VAULT_CERT_NAME=smtp-cert
 AZURE_TABLES_URL=https://mystorageaccount.table.core.windows.net/users
 AZURE_TABLES_PARTITION_KEY=smtp-users
+AZURE_TABLES_FORCE_USAGE=true
 USERNAME_DELIMITER=@
 ```
 
