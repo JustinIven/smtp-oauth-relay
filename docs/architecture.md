@@ -340,7 +340,7 @@ Configurable logging levels:
 1. **TLS Encryption**: Protects credentials in transit
 2. **OAuth Authentication**: No user passwords stored or transmitted
 3. **Application Permissions**: Centrally managed in Azure
-4. **Application Access Policies**: Restrict sender addresses
+4. **RBAC for Applications**: Restrict sender addresses via Exchange management scopes
 5. **Managed Identities**: No stored credentials for Azure services
 
 ### Attack Surface
@@ -360,7 +360,7 @@ Configurable logging levels:
 |--------|-----------|
 | Credential theft | TLS encryption, no credentials in logs |
 | Token theft | Short-lived tokens, TLS encryption |
-| Unauthorized sending | Application Access Policies |
+| Unauthorized sending | RBAC for Applications |
 | DoS attacks | Rate limiting (external), connection limits |
 | MITM attacks | TLS with valid certificates |
 

@@ -57,7 +57,7 @@ No. This requires Exchange Online and Microsoft Graph API. On-premises Exchange 
 
 Yes, shared mailboxes work if:
 1. The application has Mail.Send permission
-2. An Application Access Policy grants access to the shared mailbox
+2. An RBAC role assignment grants access to the shared mailbox (Application Access Policies don't support this scenario)
 3. You specify the shared mailbox address as the sender
 
 ### Can I send to external recipients?
@@ -109,13 +109,19 @@ Unlimited. You can:
 
 ### Can I restrict which addresses can send?
 
-Yes, using Application Access Policies in Exchange Online:
+Yes, using RBAC for Applications in Exchange Online (Application Access Policies are deprecated):
 
 ```powershell
-New-ApplicationAccessPolicy `
-  -AppId <your-app-id> `
-  -PolicyScopeGroupId "allowed-senders@example.com" `
-  -AccessRight RestrictAccess
+New-ManagementScope `
+  -Name "relay mailbox scope" `
+  -RecipientRestrictionFilter "UserPrincipalName -eq 'allowed-senders@example.com'"
+
+New-ServicePrincipal -AppId <your-app-id> -ObjectId <service-principal-object-id> -DisplayName "SMTP OAuth relay"
+
+New-ManagementRoleAssignment `
+  -App <your-app-id> `
+  -Role "Application Mail.Send" `
+  -CustomResourceScope "relay mailbox scope"
 ```
 
 See [Azure Setup Guide](azure-setup.md) for details.
@@ -219,7 +225,7 @@ Common causes:
 ### Why aren't emails being delivered?
 
 Check:
-1. **Application Access Policy**: May be blocking sender
+1. **RBAC role assignment / management scope**: May be blocking sender
 2. **Spam folder**: Email might be filtered
 3. **Exchange Online limits**: May have hit sending limits
 4. **Server logs**: Check for error messages

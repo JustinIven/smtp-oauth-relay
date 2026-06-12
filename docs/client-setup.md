@@ -27,7 +27,7 @@ All SMTP clients need these settings:
 
 1. **Use STARTTLS, not SSL/TLS**: Most clients should use STARTTLS on port 8025, not implicit SSL/TLS
 2. **Authentication is required**: The server always requires authentication
-3. **Sender address restrictions**: May be enforced via Application Access Policies in Azure
+3. **Sender address restrictions**: May be enforced via RBAC for Applications in Exchange Online
 
 ## Network Devices
 
@@ -108,7 +108,7 @@ Many firewalls send alert emails via SMTP. Configuration is similar:
 
 ### Email Not Delivered
 
-- Verify the sender address is allowed (check Application Access Policy)
+- Verify the sender address is allowed (check the RBAC management scope / role assignment)
 - Check Microsoft Graph API permissions
 - Review Exchange Online logs in Microsoft 365 admin center
 - Check recipient's spam folder

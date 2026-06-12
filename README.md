@@ -105,7 +105,7 @@ printer1@lookup
 ### Advanced Features
 
 - ✅ Multiple tenant support (single relay for multiple organizations)
-- ✅ Application Access Policies integration (restrict sender addresses)
+- ✅ RBAC for Applications integration (restrict sender addresses)
 - ✅ Azure Tables for simplified credentials
 - ✅ Sender address override
 - ✅ Horizontal scaling (stateless design)
