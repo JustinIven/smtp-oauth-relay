@@ -1,191 +1,104 @@
 # SMTP OAuth Relay
 
-An SMTP relay that accepts SMTP submissions from legacy clients and forwards messages to Microsoft Graph using OAuth 2.0 client credentials.
+A small, stateless SMTP server that lets legacy clients (printers, NAS, monitoring tools, line-of-business apps) send mail through **Microsoft 365** using **OAuth 2.0 client credentials** and the **Microsoft Graph API** — no Basic Authentication required.
 
-## Overview
+- **OAuth 2.0 client credentials** — app credentials instead of user passwords
+- **Microsoft Graph** — sends via the `sendMail` endpoint
+- **SMTP compatible** — any client supporting `AUTH LOGIN`/`PLAIN` + STARTTLS
+- **Stateless** — scale horizontally behind a load balancer
+- **TLS** from file or Azure Key Vault
+- **Azure Tables** — optional central credential lookup
 
-This repository implements a small, stateless SMTP server that bridges the gap between legacy SMTP clients and Microsoft 365's modern authentication requirements:
+📖 **Full documentation: https://justiniven.github.io/smtp-oauth-relay/**
 
-- 🔒 **OAuth 2.0 Authentication**: Uses application credentials instead of user passwords
-- 📧 **Microsoft Graph Integration**: Sends email via the Microsoft Graph API
-- 🔌 **SMTP Compatibility**: Works with any SMTP client (AUTH LOGIN/PLAIN)
-- 🚀 **Stateless & Scalable**: Can be deployed in multiple instances for high availability
-- 🔐 **Security-First**: Supports TLS encryption and Azure Key Vault integration
-- 📊 **Azure Tables Support**: Optional centralized credential management
+## Quick start
 
-### Comparison with Other Solutions
+Three steps. You need a Microsoft 365 tenant and permission to register an Entra ID application.
 
-| Feature | SMTP OAuth Relay | Azure Communication Services | Microsoft 365 High Volume Email (Preview) |
-|---------|-----------------|------------------------------|----------------------------------|
-| **Purpose** | Bridge legacy SMTP clients to Microsoft 365 | General email/SMS/voice service | High-volume transactional email |
-| **Use Case** | Legacy devices, printers, apps without OAuth | Application email/SMS at scale | Marketing, newsletters, bulk email |
-| **SMTP Support** | ✅ SMTP compatibility | ✅ SMTP available | ✅ SMTP compatibility |
-| **Send Externally** | ✅ Yes (to any recipient) | ✅ Yes (to any recipient) | ❌ No (only internal) |
-| **Legacy Device Support** | ✅ Excellent | ⚠️ Moderate* | ✅ Excellent |
-| **Multi-tenant** | ✅ Yes | ❌ No | ❌ No |
-| **Sender Address** | Uses existing M365 mailboxes | Custom domains | Uses dedicated Mailbox (HVE-Account) |
-| **Pricing** | Free (self-hosted) | Pay-per-use (email/SMS/calls) | Free in Preview |
-| **Infrastructure** | Self-hosted (Docker/K8s) | Fully managed Azure service | Fully managed Microsoft service |
-| **Deliverability** | Microsoft 365 reputation | Separate IP pools and reputation | Microsoft 365 reputation |
-| **Volume Limits** | Based on M365 mailbox limits | Very high (purpose-built for scale) | Very high (designed for bulk) |
-| **Setup Complexity** | Moderate (deploy + Entra app) | Moderate (provision resource + Entra app) | Low (create HVE-Account) |
+### 1. Create Entra ID credentials (PowerShell)
 
-*Some legacy devices may not support providing a dedicated From address or may implement a character limit, which won't work with ACS.
+[`New-RelayEntraApp.ps1`](./New-RelayEntraApp.ps1) registers the app, creates a secret, and restricts it to a single sender mailbox.
 
-## Quick Start
+```powershell
+# Prerequisites: PowerShell 5.1+, Microsoft.Graph and ExchangeOnlineManagement modules
+Connect-MgGraph -Scopes "Application.ReadWrite.All", "AppRoleAssignment.ReadWrite.All" -NoWelcome
+Connect-ExchangeOnline -ShowBanner:$false
 
-### Deploy on Azure
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FJustinIven%2Fsmtp-oauth-relay%2Fmain%2Fazure_deployment%2Fdeployment.json)
+Invoke-WebRequest `
+  -Uri "https://raw.githubusercontent.com/JustinIven/smtp-oauth-relay/main/New-RelayEntraApp.ps1" `
+  -OutFile "New-RelayEntraApp.ps1"
 
-Refer to the [Installation Guide](docs/installation.md) for detailed steps.
+.\New-RelayEntraApp.ps1 -DisplayName "SMTP OAuth Relay" -SenderAddress "noreply@example.com"
+```
 
+The script prints the **SMTP username** (`tenant_id@client_id`) and **SMTP password** (client secret). Save them — the secret cannot be retrieved later.
 
-### Run with Docker
+### 2. Run the relay
 
 ```bash
 docker run --name smtp-relay -p 8025:8025 \
-  -v $(pwd)/certs:/usr/src/smtp-relay/certs \
-  -e LOG_LEVEL=INFO \
-  -e TLS_SOURCE=file \
-  -e REQUIRE_TLS=true \
+  -e TLS_SOURCE=off \
+  -e REQUIRE_TLS=false \
   ghcr.io/justiniven/smtp-oauth-relay:latest
 ```
 
-### Basic Configuration
+> [!WARNING]
+> Only disable TLS for testing in a trusted network. Use `TLS_SOURCE=file` or `TLS_SOURCE=keyvault` in production.
+
+Or deploy to Azure Container Instances:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FJustinIven%2Fsmtp-oauth-relay%2Fmain%2Fazure_deployment%2Fdeployment.json)
+
+### 3. Point your client at the relay
 
 | Setting | Value |
 |---------|-------|
-| **SMTP Server** | Your relay hostname |
-| **Port** | 8025 |
-| **Security** | STARTTLS |
-| **Username** | `tenant_id@client_id` |
-| **Password** | Your app's client secret |
+| Server | Your relay hostname |
+| Port | `8025` |
+| Security | STARTTLS |
+| Username | `tenant_id@client_id` (from step 1) |
+| Password | Client secret (from step 1) |
+
+Verify with PowerShell:
+
+```powershell
+$cred = Get-Credential   # User: tenant_id@client_id  Password: client_secret
+Send-MailMessage -SmtpServer relay.example.com -Port 8025 `
+  -Credential $cred `
+  -From noreply@example.com -To you@example.com `
+  -Subject 'Relay test' -Body 'Relay test'
+```
+
+Or with [swaks](https://github.com/jetmore/swaks):
+
+```bash
+swaks --server relay.example.com:8025 \
+  --auth-user 'tenant_id@client_id' --auth-password 'client_secret' \
+  --from noreply@example.com --to you@example.com --body 'Relay test'
+```
+
 
 ## Documentation
 
-### 📘 Getting Started
-- **[Installation Guide](docs/installation.md)** - Docker, Kubernetes, manual installation
-- **[Configuration Reference](docs/configuration.md)** - All environment variables explained
-- **[Azure/Entra ID Setup](docs/azure-setup.md)** - Create and configure Azure applications
+- [Installation](docs/installation/index.md) — Docker, Azure, Kubernetes, manual
+- [Entra ID setup](docs/entra-id-setup/index.md) — app registration and sender restrictions
+- [Configuration](docs/configuration.md) — environment variable reference
+- [Client setup](docs/client-setup.md) — printers, NAS, firewalls, apps
+- [Authentication](docs/authentication.md) — username formats and encoding
+- [Azure Tables](docs/azure-tables.md) — central credential lookup
+- [Architecture](docs/architecture/index.md) · [FAQ](docs/faq.md)
 
-### 🔧 Configuration
-- **[Client Setup Guide](docs/client-setup.md)** - Configure email clients, printers, applications
-- **[Authentication Guide](docs/authentication.md)** - Username formats, UUID encoding, lookup tables
-- **[Azure Tables Integration](docs/azure-tables.md)** - Centralized credential management
+## Known limitations
 
-### 🏗️ Architecture & Help
-- **[Architecture & How It Works](docs/architecture.md)** - Technical implementation details
-- **[FAQ](docs/faq.md)** - Frequently asked questions
+- The Microsoft Graph `user: sendMail` endpoint always sends from the primary mailbox; alias addresses are not honored ([#80](https://github.com/JustinIven/smtp-oauth-relay/issues/80)).
 
-## Features
+## Support
 
-### Authentication Options
-
-**Direct UUID Format**:
-```
-12345678-1234-1234-1234-123456789abc@abcdefab-1234-5678-abcd-abcdefabcdef
-```
-
-**Base64URL Encoded** (shorter):
-```
-EjRWeBI0EjQSNBI0VnirzQ@q83rrBI0VnirzN21q837qg
-```
-
-**Azure Tables Lookup** (custom):
-```
-printer1@lookup
-```
-
-### TLS Certificate Sources
-
-- **File**: Load from filesystem (development, production with Let's Encrypt)
-- **Azure Key Vault**: Managed certificate storage with automatic rotation
-- **Off**: Disable TLS (development only)
-
-### Advanced Features
-
-- ✅ Multiple tenant support (single relay for multiple organizations)
-- ✅ RBAC for Applications integration (restrict sender addresses)
-- ✅ Azure Tables for simplified credentials
-- ✅ Sender address override
-- ✅ Horizontal scaling (stateless design)
-- ✅ Comprehensive logging and monitoring
-
-## Architecture
-
-![Authentication Flow](docs/images/sequenceDiagram.svg)
-
-## Use Cases
-
-### Legacy Devices
-- Network printers with scan-to-email
-- Multifunction devices
-- Fax servers
-- Security cameras
-
-### Applications
-- Monitoring systems (Grafana, Nagios)
-- CI/CD pipelines (Jenkins, GitLab)
-- Content management systems (WordPress, Drupal)
-- Custom applications without OAuth support
-
-### Network Infrastructure
-- NAS devices (Synology, QNAP)
-- Firewalls and routers
-- UPS systems
-- IoT devices
-
-## Requirements
-
-### Server Requirements
-- Python 3.11+ (if running manually)
-- Docker (recommended) or Kubernetes
-- Network access to Microsoft APIs
-- TLS certificate (production)
-
-### Azure Requirements
-- Microsoft 365 / Exchange Online tenant
-- Microsoft Entra ID (Azure AD)
-- Application registration with Mail.Send permission
-
-### Optional
-- Azure Key Vault (for certificate management)
-- Azure Table Storage (for credential lookup)
-- Managed Identity (for Azure services)
-
-## Security
-
-This relay implements security best practices:
-
-- 🔐 **TLS Encryption**: Protects credentials in transit
-- 🔑 **OAuth 2.0**: No user passwords stored or transmitted
-- 🛡️ **Application Permissions**: Centrally managed in Azure
-- 📝 **Audit Logging**: Full activity logs in Azure AD
-- 🚫 **Access Policies**: Restrict sender addresses
-- 🔄 **Secret Rotation**: Regular credential rotation support
-
-## Known Limitations
-
-- Due to a limitation in the Microsoft Graph `user: sendMail` endpoint, emails cannot be sent from alias addresses and will always be sent from the primary mailbox. (Issue [#80](https://github.com/JustinIven/smtp-oauth-relay/issues/80))
-
-## Community & Support
-
-- 📖 **Documentation**: Comprehensive guides in the `docs/` folder
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/justiniven/smtp-oauth-relay/issues)
-- 💡 **Feature Requests**: [GitHub Issues](https://github.com/justiniven/smtp-oauth-relay/issues)
-- 🤝 **Contributions**: Pull requests welcome!
+- Bugs and feature requests: [GitHub Issues](https://github.com/justiniven/smtp-oauth-relay/issues)
+- Pull requests welcome.
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
+Apache License 2.0 — see [LICENSE](./LICENSE).
 
-## Acknowledgments
-
-Built with:
-- [aiosmtpd](https://aiosmtpd.aio-libs.org/) - SMTP server framework
-- [Microsoft Graph API](https://learn.microsoft.com/en-us/graph/) - Email sending
-- [Microsoft Identity Platform](https://learn.microsoft.com/en-us/entra/identity-platform/) - OAuth authentication
-
----
-
-**Ready to get started?** → [Installation Guide](docs/installation.md)
+Built with [aiosmtpd](https://aiosmtpd.aio-libs.org/), the [Microsoft Graph API](https://learn.microsoft.com/en-us/graph/), and the [Microsoft Identity Platform](https://learn.microsoft.com/en-us/entra/identity-platform/).

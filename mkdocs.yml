@@ -1,0 +1,93 @@
+site_name: SMTP OAuth Relay
+site_description: An SMTP relay that bridges legacy SMTP clients to Microsoft Graph using OAuth 2.0
+site_url: https://justiniven.github.io/smtp-oauth-relay/
+repo_url: https://github.com/JustinIven/smtp-oauth-relay
+repo_name: JustinIven/smtp-oauth-relay
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+    - content.tooltips
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - installation/index.md
+      - Docker: installation/docker.md
+      - Azure: installation/azure.md
+      - Kubernetes: installation/kubernetes.md
+      - Manual: installation/manual.md
+  - Entra ID Setup: 
+      - entra-id-setup/index.md
+  - Configuration:
+      - Environment Variables: configuration.md
+      - Authentication: authentication.md
+      - Azure Tables: azure-tables.md
+      - Client Setup: client-setup.md
+  - Architecture:
+      - architecture/index.md
+      - Design Decisions: architecture/design-decisions.md
+      - Security: architecture/security.md
+  - FAQ: faq.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.keys
+  - attr_list
+  - md_in_html
+  - tables
+  - abbr
+  - toc:
+      permalink: true
+
+plugins:
+  - search

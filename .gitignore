@@ -1,3 +1,6 @@
 __pycache__
 certs
 .pytest_cache
+
+# MkDocs build output
+site/
