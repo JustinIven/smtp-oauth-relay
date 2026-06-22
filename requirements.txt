@@ -5,7 +5,7 @@ azure-core==1.38.0
 azure-data-tables==12.7.0
 azure-identity==1.25.1
 azure-keyvault-secrets==4.10.0
-certifi==2026.1.4
+certifi==2026.2.25
 cffi==2.0.0
 charset-normalizer==3.4.5
 cryptography==46.0.5
