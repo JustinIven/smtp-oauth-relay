@@ -22,7 +22,7 @@ PyJWT==2.11.0
 requests==2.32.5
 setuptools==82.0.0
 six==1.17.0
-smmap==5.0.2
+smmap==5.0.3
 typing_extensions==4.15.0
 urllib3==2.6.3
 wheel==0.46.3
