@@ -2,7 +2,7 @@ import base64
 import re
 import uuid
 
-import azure_table
+from azure_table import AzureTableStore
 from env import (
     USERNAME_DELIMITER,
     AZURE_TABLES_FORCE_USAGE
@@ -29,7 +29,7 @@ def decode_uuid_or_base64url(input_str: str) -> str:
         raise ValueError(f"Invalid base64url encoding in input '{input_str}'")
 
 
-def parse_username(username: str) -> tuple[str, str, str|None]:
+def parse_username(username: str, table_store: AzureTableStore | None = None) -> tuple[str, str, str|None]:
     """
     Parse the username to extract tenant_id and client_id.
     The expected format is: tenant_id{USERNAME_DELIMITER}client_id{. optional_tld}
@@ -50,7 +50,9 @@ def parse_username(username: str) -> tuple[str, str, str|None]:
 
     # check if the second part hints a user stored in the lookup table
     if parts[1] == 'lookup':
-        return azure_table.lookup_user(parts[0])
+        if table_store is None:
+            raise ValueError("User lookup requested but Azure Tables is not configured")
+        return table_store.lookup_user(parts[0])
 
     # else return both parts decoded
     tenant_id = decode_uuid_or_base64url(parts[0])
@@ -58,7 +60,9 @@ def parse_username(username: str) -> tuple[str, str, str|None]:
 
     # If AZURE_TABLES_FORCE_USAGE is enabled, verify the user exists in the table
     if AZURE_TABLES_FORCE_USAGE:
-        from_email = azure_table.verify_user_in_table(tenant_id, client_id)
+        if table_store is None:
+            raise ValueError("AZURE_TABLES_FORCE_USAGE is enabled but Azure Tables is not configured")
+        from_email = table_store.verify_user_in_table(tenant_id, client_id)
         return tenant_id, client_id, from_email
 
     return tenant_id, client_id, None

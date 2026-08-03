@@ -6,7 +6,7 @@ from custom import CustomController
 from aiosmtpd.smtp import AuthResult
 
 import sslContext
-import azure_table
+from azure_table import AzureTableStore
 from graph import GraphClient
 from parsing import parse_username
 from env import (
@@ -19,6 +19,7 @@ from env import (
     TLS_CIPHER_SUITE,
     AZURE_KEY_VAULT_URL,
     AZURE_KEY_VAULT_CERT_NAME,
+    AZURE_TABLES_URL,
     AZURE_TABLES_FORCE_USAGE
 )
 
@@ -26,6 +27,9 @@ from env import (
 
 
 class Authenticator:
+    def __init__(self, table_store: AzureTableStore | None = None):
+        self._table_store = table_store
+
     def __call__(self, server, session, envelope, mechanism, auth_data):
         try:
             # Only support LOGIN and PLAIN mechanisms
@@ -46,7 +50,7 @@ class Authenticator:
             
             # Parse tenant_id and client_id from login string using the configured format
             try:
-                tenant_id, client_id, from_email = parse_username(login_str)
+                tenant_id, client_id, from_email = parse_username(login_str, self._table_store)
             except ValueError as e:
                 logging.error(str(e))
                 return AuthResult(success=False, handled=False, message=f"535 5.7.8 {str(e)}")
@@ -184,9 +188,14 @@ async def amain():
 
         logging.info(f"TLS cipher suites used: {', '.join([i['name'] for i in context.get_ciphers()])}")
 
+    # Create a shared Azure Table store when configured
+    table_store = AzureTableStore() if AZURE_TABLES_URL else None
+
     # If AZURE_TABLES_FORCE_USAGE is enabled, verify table access at startup
     if AZURE_TABLES_FORCE_USAGE:
-        azure_table.verify_table_access()
+        if table_store is None:
+            raise ValueError("AZURE_TABLES_URL must be set when AZURE_TABLES_FORCE_USAGE is enabled")
+        table_store.verify_table_access()
         logging.info("Azure Table access verified (AZURE_TABLES_FORCE_USAGE=true)")
 
     controller = None
@@ -196,7 +205,7 @@ async def amain():
             hostname='', # bind dual-stack on all interfaces
             port=8025,
             ident=SERVER_GREETING,
-            authenticator=Authenticator(),
+            authenticator=Authenticator(table_store),
             auth_required=True,
             auth_require_tls=REQUIRE_TLS,
             require_starttls=REQUIRE_TLS,
