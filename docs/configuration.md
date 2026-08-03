@@ -9,6 +9,7 @@ All configuration is via environment variables. Defaults are safe for a TLS-enab
 | `LOG_LEVEL` | `WARNING` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (case-insensitive). Avoid `DEBUG` in production — logs may contain secrets. |
 | `SERVER_GREETING` | `Microsoft Graph SMTP OAuth Relay` | SMTP banner sent to clients. |
 | `USERNAME_DELIMITER` | `@` | Character separating tenant and client ID in the username. One of `@`, `:`, `|`. Use `:` or `|` if a client rejects `@`. |
+| `GRAPH_HTTP_TIMEOUT` | `30` | Timeout in seconds for HTTP requests to Microsoft (OAuth token and Graph sendMail). Prevents connections from hanging indefinitely. |
 
 ## TLS
 

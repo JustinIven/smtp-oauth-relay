@@ -4,6 +4,8 @@ import requests
 from email import message_from_bytes, policy
 from quopri import decodestring
 
+from env import GRAPH_HTTP_TIMEOUT
+
 
 class GraphClient:
     """Encapsulates all Microsoft Graph interactions for sending mail.
@@ -35,7 +37,8 @@ class GraphClient:
             response = requests.post(
                 url=f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
                 data=data,
-                headers=headers
+                headers=headers,
+                timeout=GRAPH_HTTP_TIMEOUT
             )
             response.raise_for_status()
             return response.json().get("access_token")

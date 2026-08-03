@@ -72,3 +72,8 @@ AZURE_TABLES_FORCE_USAGE = load_env(
     sanitize=lambda x: x.lower(),
     convert=lambda x: x == 'true'
 )
+GRAPH_HTTP_TIMEOUT = load_env(
+    name='GRAPH_HTTP_TIMEOUT',
+    default='30',
+    convert=lambda x: float(x)
+)
