@@ -98,7 +98,7 @@ class GraphClient:
             data = base64.b64encode(self._sanitize_mime_encoding(body))
             logging.debug(f"Sending email from {from_email}")
 
-            response = requests.post(url, data=data, headers=headers)
+            response = requests.post(url, data=data, headers=headers, timeout=GRAPH_HTTP_TIMEOUT)
             if response.status_code == 202:
                 logging.info("Email sent successfully!")
                 return True
