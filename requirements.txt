@@ -7,7 +7,7 @@ azure-identity==1.25.3
 azure-keyvault-secrets==4.11.0
 certifi==2026.7.22
 cffi==2.1.1
-charset-normalizer==3.4.9
+charset-normalizer==3.5.0
 cryptography==50.0.0
 idna==3.18
 isodate==0.7.2
