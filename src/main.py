@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 from email import message_from_bytes
 
 from custom import CustomController
@@ -7,7 +8,7 @@ from aiosmtpd.smtp import AuthResult
 
 import sslContext
 from azure_table import AzureTableStore
-from graph import GraphClient
+from graph import GraphClient, start_http_session, close_http_session
 from parsing import parse_username
 from env import (
     LOG_LEVEL,
@@ -24,13 +25,11 @@ from env import (
 )
 
 
-
-
 class Authenticator:
     def __init__(self, table_store: AzureTableStore | None = None):
         self._table_store = table_store
 
-    def __call__(self, server, session, envelope, mechanism, auth_data):
+    async def __call__(self, server, session, envelope, mechanism, auth_data):
         try:
             # Only support LOGIN and PLAIN mechanisms
             if mechanism not in ('LOGIN', 'PLAIN'):
@@ -44,22 +43,22 @@ class Authenticator:
                 
             try:
                 login_str = auth_data.login.decode("utf-8")
+                client_secret = auth_data.password.decode("utf-8")
             except Exception as e:
-                logging.error(f"Failed to decode login string: {str(e)}")
+                logging.error(f"Failed to decode credentials: {str(e)}")
                 return AuthResult(success=False, handled=False, message="535 5.7.8 Invalid authentication credentials encoding")
             
             # Parse tenant_id and client_id from login string using the configured format
             try:
-                tenant_id, client_id, from_email = parse_username(login_str, self._table_store)
+                tenant_id, client_id, from_email = await parse_username(login_str, self._table_store)
             except ValueError as e:
                 logging.error(str(e))
                 return AuthResult(success=False, handled=False, message=f"535 5.7.8 {str(e)}")
                 
-            client_secret = auth_data.password
             session.lookup_from_email = from_email
 
             try:
-                session.graph_client = GraphClient.from_credentials(tenant_id, client_id, client_secret)
+                session.graph_client = await GraphClient.from_credentials(tenant_id, client_id, client_secret)
                 return AuthResult(success=True)
             except Exception as e:
                 logging.error(f"Authentication failed: {str(e)}")
@@ -92,9 +91,9 @@ class Handler:
 
         if fixes_applied:
             logging.debug("Applied fixes to email headers before sending")
-            success = session.graph_client.send_email(raw_envelope.as_bytes(), mail_from)
+            success = await session.graph_client.send_email(raw_envelope.as_bytes(), mail_from)
         else:
-            success = session.graph_client.send_email(envelope.content, envelope.mail_from)
+            success = await session.graph_client.send_email(envelope.content, envelope.mail_from)
 
         if success:
             logging.info("DATA command processed successfully")
@@ -161,7 +160,7 @@ class Handler:
 
 
 # noinspection PyShadowingNames
-async def amain():
+async def amain(loop):
     match TLS_SOURCE:
         case 'file':
             context = sslContext.from_file(TLS_CERT_FILEPATH, TLS_KEY_FILEPATH)
@@ -195,29 +194,32 @@ async def amain():
     if AZURE_TABLES_FORCE_USAGE:
         if table_store is None:
             raise ValueError("AZURE_TABLES_URL must be set when AZURE_TABLES_FORCE_USAGE is enabled")
-        table_store.verify_table_access()
+        await table_store.verify_table_access()
         logging.info("Azure Table access verified (AZURE_TABLES_FORCE_USAGE=true)")
 
-    controller = None
-    try:
-        controller = CustomController(
-            Handler(),
-            hostname='', # bind dual-stack on all interfaces
-            port=8025,
-            ident=SERVER_GREETING,
-            authenticator=Authenticator(table_store),
-            auth_required=True,
-            auth_require_tls=REQUIRE_TLS,
-            require_starttls=REQUIRE_TLS,
-            tls_context=context
-        )
-        controller.start()
-        logging.info(f"SMTP OAuth relay server started on port 8025")
-    except Exception as e:
-        logging.exception(f"Failed to start SMTP server: {str(e)}")
-        if controller:
-            controller.stop()
-        raise
+    # Share a single HTTP session, created on the loop that serves SMTP
+    await start_http_session()
+
+    return CustomController(
+        Handler(),
+        hostname='', # bind dual-stack on all interfaces
+        port=8025,
+        loop=loop,
+        ident=SERVER_GREETING,
+        authenticator=Authenticator(table_store),
+        auth_required=True,
+        auth_require_tls=REQUIRE_TLS,
+        require_starttls=REQUIRE_TLS,
+        tls_context=context
+    ), table_store
+
+
+async def ashutdown(controller, table_store):
+    if controller is not None and controller.server is not None:
+        await controller.finalize()
+    await close_http_session()
+    if table_store is not None:
+        await table_store.close()
 
 
 if __name__ == '__main__':
@@ -230,18 +232,25 @@ if __name__ == '__main__':
     # Create event loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
-    # Run main function
+
+    controller = None
+    table_store = None
+    exit_code = 0
     try:
-        loop.create_task(amain())
+        controller, table_store = loop.run_until_complete(amain(loop))
+        # begin() drives the loop itself, so it has to run before run_forever()
+        controller.begin()
+        logging.info(f"SMTP OAuth relay server started on port 8025")
         loop.run_forever()
     except KeyboardInterrupt:
         logging.info("Shutdown requested via keyboard interrupt")
     except Exception as e:
         logging.exception(f"Unexpected error: {str(e)}")
+        exit_code = 1
     finally:
         logging.info("Shutting down...")
-        tasks = asyncio.all_tasks(loop)
-        for task in tasks:
+        loop.run_until_complete(ashutdown(controller, table_store))
+        for task in asyncio.all_tasks(loop):
             task.cancel()
         loop.close()
+        sys.exit(exit_code)

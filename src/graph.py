@@ -1,10 +1,38 @@
+import asyncio
 import base64
 import logging
-import requests
+import aiohttp
 from email import message_from_bytes, policy
 from quopri import decodestring
 
 from env import GRAPH_HTTP_TIMEOUT
+
+
+# Matches the previous requests semantics: a per-socket timeout, not a wall-clock limit.
+_TIMEOUT = aiohttp.ClientTimeout(sock_connect=GRAPH_HTTP_TIMEOUT, sock_read=GRAPH_HTTP_TIMEOUT)
+
+_http_session: aiohttp.ClientSession | None = None
+
+
+async def start_http_session() -> None:
+    """Create the shared HTTP session. Must be awaited on the event loop that serves SMTP."""
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        _http_session = aiohttp.ClientSession(timeout=_TIMEOUT, cookie_jar=aiohttp.DummyCookieJar()) # Use a dummy cookie jar to avoid storing cookies globally
+
+
+async def close_http_session() -> None:
+    """Close the shared HTTP session."""
+    global _http_session
+    if _http_session is not None and not _http_session.closed:
+        await _http_session.close()
+    _http_session = None
+
+
+def _session() -> aiohttp.ClientSession:
+    if _http_session is None or _http_session.closed:
+        raise RuntimeError("HTTP session is not available; start_http_session() was not awaited")
+    return _http_session
 
 
 class GraphClient:
@@ -18,13 +46,13 @@ class GraphClient:
         self.access_token = access_token
 
     @classmethod
-    def from_credentials(cls, tenant_id: str, client_id: str, client_secret: str) -> "GraphClient":
+    async def from_credentials(cls, tenant_id: str, client_id: str, client_secret: str) -> "GraphClient":
         """Create a GraphClient by acquiring an access token via client credentials."""
-        access_token = cls._request_access_token(tenant_id, client_id, client_secret)
+        access_token = await cls._request_access_token(tenant_id, client_id, client_secret)
         return cls(access_token)
 
     @staticmethod
-    def _request_access_token(tenant_id: str, client_id: str, client_secret: str) -> str:
+    async def _request_access_token(tenant_id: str, client_id: str, client_secret: str) -> str:
         data = {
             "grant_type": "client_credentials",
             "client_id": client_id,
@@ -34,18 +62,18 @@ class GraphClient:
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            response = requests.post(
+            async with _session().post(
                 url=f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
                 data=data,
-                headers=headers,
-                timeout=GRAPH_HTTP_TIMEOUT
-            )
-            response.raise_for_status()
-            return response.json().get("access_token")
-        except requests.RequestException as e:
+                headers=headers
+            ) as response:
+                if response.status != 200:
+                    logging.error(f"Response status: {response.status}, Response body: {await response.text()}")
+                    response.raise_for_status()
+                payload = await response.json()
+                return payload.get("access_token")
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logging.error(f"OAuth token request failed: {str(e)}")
-            if hasattr(e, 'response') and e.response:
-                logging.error(f"Response status: {e.response.status_code}, Response body: {e.response.text}")
             raise
 
     @staticmethod
@@ -87,7 +115,7 @@ class GraphClient:
             logging.exception("Failed to sanitize MIME encoding; sending original raw message")
         return raw_message
 
-    def send_email(self, body: bytes, from_email: str) -> bool:
+    async def send_email(self, body: bytes, from_email: str) -> bool:
         url = f"https://graph.microsoft.com/v1.0/users/{from_email}/sendMail"
         headers = {
             "Authorization": f"Bearer {self.access_token}",
@@ -98,14 +126,14 @@ class GraphClient:
             data = base64.b64encode(self._sanitize_mime_encoding(body))
             logging.debug(f"Sending email from {from_email}")
 
-            response = requests.post(url, data=data, headers=headers, timeout=GRAPH_HTTP_TIMEOUT)
-            if response.status_code == 202:
-                logging.info("Email sent successfully!")
-                return True
-            else:
-                logging.error(f"Failed to send email: Status code {response.status_code}")
-                logging.error(f"Response body: {response.text}")
-                return False
+            async with _session().post(url, data=data, headers=headers) as response:
+                if response.status == 202:
+                    logging.info("Email sent successfully!")
+                    return True
+                else:
+                    logging.error(f"Failed to send email: Status code {response.status}")
+                    logging.error(f"Response body: {await response.text()}")
+                    return False
         except Exception as e:
             logging.exception(f"Exception while sending email: {str(e)}")
             return False

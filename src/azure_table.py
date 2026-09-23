@@ -1,7 +1,15 @@
-from azure.identity import DefaultAzureCredential
-from azure.data.tables import TableClient
+from typing import Any
+
+from azure.identity.aio import DefaultAzureCredential
+from azure.data.tables.aio import TableClient
 
 from env import AZURE_TABLES_PARTITION_KEY, AZURE_TABLES_URL
+
+
+async def _first(entities) -> Any | None:
+    async for entity in entities:
+        return entity
+    return None
 
 
 class AzureTableStore:
@@ -19,7 +27,12 @@ class AzureTableStore:
         self._credential = DefaultAzureCredential()
         self._client = TableClient.from_table_url(table_url=table_url, credential=self._credential)  # pyright: ignore[reportArgumentType]
 
-    def lookup_user(self, lookup_id: str) -> tuple[str, str, str|None]:
+    async def close(self) -> None:
+        """Release the underlying table client and credential."""
+        await self._client.close()
+        await self._credential.close()
+
+    async def lookup_user(self, lookup_id: str) -> tuple[str, str, str|None]:
         """
         Search in Azure Table for user information based on the lookup_id (RowKey).
         Returns (tenant_id, client_id, from_email) or raises ValueError if not found.
@@ -28,7 +41,7 @@ class AzureTableStore:
             entities = self._client.query_entities(
                 query_filter=f"PartitionKey eq '{self._partition_key}' and RowKey eq '{lookup_id}'"
             )
-            entity = next(iter(entities), None)
+            entity = await _first(entities)
         except Exception as e:
             raise RuntimeError(f"Failed to query Azure Table: {str(e)}") from e
 
@@ -44,7 +57,7 @@ class AzureTableStore:
 
         return tenant_id, client_id, from_email
 
-    def verify_table_access(self) -> None:
+    async def verify_table_access(self) -> None:
         """
         Verify that the Azure Table is accessible.
         Raises RuntimeError if the table cannot be reached.
@@ -54,11 +67,11 @@ class AzureTableStore:
                 query_filter=f"PartitionKey eq '{self._partition_key}'",
                 results_per_page=1
             )
-            next(iter(entities), None)
+            await _first(entities)
         except Exception as e:
             raise RuntimeError(f"Failed to access Azure Table: {str(e)}") from e
 
-    def verify_user_in_table(self, tenant_id: str, client_id: str) -> str | None:
+    async def verify_user_in_table(self, tenant_id: str, client_id: str) -> str | None:
         """
         Verify that a user with the given tenant_id and client_id exists in Azure Table.
         Returns from_email if set, otherwise None.
@@ -68,7 +81,7 @@ class AzureTableStore:
             entities = self._client.query_entities(
                 query_filter=f"PartitionKey eq '{self._partition_key}' and tenant_id eq '{tenant_id}' and client_id eq '{client_id}'"
             )
-            entity = next(iter(entities), None)
+            entity = await _first(entities)
         except Exception as e:
             raise RuntimeError(f"Failed to query Azure Table: {str(e)}") from e
 
