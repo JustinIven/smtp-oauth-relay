@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM python:3.14.3-slim
+FROM python:3.14.7-slim
 
 # Pinned UID/GID so host volumes and Kubernetes securityContexts can match
 ARG UID=10001
