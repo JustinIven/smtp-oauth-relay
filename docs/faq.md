@@ -16,7 +16,7 @@ Lets legacy SMTP-only clients send mail through Microsoft 365 using OAuth 2.0 (c
 
 ## Configuration
 
-**Change the port from 8025?** Remap it at the container/host level, e.g. `docker run -p 587:8025 …`.
+**Change the port from 8025?** Remap it at the container/host level, e.g. `docker run -p 587:8025 …`. The container process is unprivileged, so it cannot bind ports below 1024 itself.
 
 **Different username delimiter?** Set `USERNAME_DELIMITER` to `:` or `|`.
 

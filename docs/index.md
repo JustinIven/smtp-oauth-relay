@@ -55,6 +55,9 @@ The script prints the **SMTP username** (`tenant_id@client_id`) and **SMTP passw
     !!! warning "TLS is recommended"
         Only disable TLS for testing in a trusted network. Use `TLS_SOURCE=file` or `TLS_SOURCE=keyvault` in production.
 
+    !!! info "Runs as non-root"
+        The container runs as the unprivileged user `smtp-relay` (pinned UID/GID `10001`). See the [Docker install guide](installation/docker.md).
+
 === "Azure (one-click)"
 
     [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FJustinIven%2Fsmtp-oauth-relay%2Fmain%2Fazure_deployment%2Fdeployment.json)

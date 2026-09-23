@@ -11,6 +11,7 @@ The relay implements multiple layers of security:
 3. **Application Permissions**: Centrally managed in Azure
 4. **Application Access Policies**: Restrict sender addresses
 5. **Managed Identities**: No stored credentials for Azure services
+6. **Unprivileged Container**: Runs as non-root (pinned UID/GID `10001`), no write access required at runtime
 
 ## Attack Surface
 
@@ -43,6 +44,7 @@ The relay implements multiple layers of security:
 - :cloud: **Use Managed Identities** for Azure Key Vault and Table Storage access
 - :mag: **Monitor sign-in logs** in Microsoft Entra ID for anomalies
 - :no_entry: **Never set `LOG_LEVEL=DEBUG`** in production — debug logs may contain sensitive information
+- :package: **Keep the container unprivileged** — drop all capabilities and mount the certificates read-only
 
 ## Next Steps
 

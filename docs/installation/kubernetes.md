@@ -2,6 +2,8 @@
 
 The relay is stateless — run multiple replicas behind a `LoadBalancer` service. The manifest below includes a namespace, a TLS cert `Secret`, a config `ConfigMap`, a `Deployment`, and a `Service`. Adjust values to your environment.
 
+The image runs as the unprivileged user `smtp-relay` (pinned UID/GID `10001`), so it works unchanged under a `restricted` Pod Security Standard.
+
 ## Basic deployment
 
 `deployment.yaml`:
@@ -49,9 +51,21 @@ spec:
       labels:
         app: smtp-relay
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: smtp-relay
         image: ghcr.io/justiniven/smtp-oauth-relay:1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         ports:
         - containerPort: 8025
           name: smtp

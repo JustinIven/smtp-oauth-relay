@@ -45,6 +45,9 @@ docker run --name smtp-relay -p 8025:8025 \
 > [!WARNING]
 > Only disable TLS for testing in a trusted network. Use `TLS_SOURCE=file` or `TLS_SOURCE=keyvault` in production.
 
+> [!NOTE]
+> The container runs as the unprivileged user `smtp-relay` (pinned UID/GID `10001`). Mounted certificates must be readable by that UID.
+
 Or deploy to Azure Container Instances:
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FJustinIven%2Fsmtp-oauth-relay%2Fmain%2Fazure_deployment%2Fdeployment.json)

@@ -2,6 +2,9 @@
 
 Mount a `certs/` directory containing `cert.pem` and `key.pem` (see [Manual install](manual.md#generate-a-self-signed-certificate-testing) to generate test certs), then run the relay on port `8025`.
 
+!!! info "Runs as non-root"
+    The image runs as the unprivileged user `smtp-relay` with a pinned **UID/GID `10001`**. Mounted certificates must be readable by that UID, e.g. `chown -R 10001:10001 certs` or `chmod o+r certs/*.pem`. Because the process is unprivileged it cannot bind ports below 1024 inside the container — publish a privileged host port instead (`-p 587:8025`).
+
 === "docker run"
 
     ```bash
@@ -54,6 +57,21 @@ Mount a `certs/` directory containing `cert.pem` and `key.pem` (see [Manual inst
     ```
 
 See the [configuration reference](../configuration.md) for all environment variables.
+
+??? note "Change the UID/GID"
+    The user is created at build time from the `UID`/`GID` build arguments:
+
+    ```bash
+    docker build --build-arg UID=1500 --build-arg GID=1500 -t smtp-oauth-relay:local .
+    ```
+
+    With the prebuilt image you can override the runtime user instead — the relay needs no write access, only read access to the certificates:
+
+    ```bash
+    docker run --name smtp-relay -p 8025:8025 --user 1500:1500 \
+      -v $(pwd)/certs:/usr/src/smtp-relay/certs:ro \
+      -e TLS_SOURCE=file ghcr.io/justiniven/smtp-oauth-relay:1
+    ```
 
 ??? note "Build from source"
     ```bash
