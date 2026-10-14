@@ -1242,7 +1242,7 @@ wheels = [
 
 [[package]]
 name = "smtp-oauth-relay"
-version = "0.0.0"
+version = "1.7.1"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },

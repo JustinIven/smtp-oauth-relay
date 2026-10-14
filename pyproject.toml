@@ -1,6 +1,6 @@
 [project]
 name = "smtp-oauth-relay"
-version = "0.0.0"
+version = "1.7.1"
 description = "SMTP relay that forwards mail through Microsoft Graph using OAuth"
 readme = "README.md"
 requires-python = ">=3.11"
