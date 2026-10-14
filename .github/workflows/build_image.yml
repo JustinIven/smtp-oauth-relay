@@ -8,6 +8,8 @@ on:
     branches: main
     paths:
       - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'src/**'
       - '.github/workflows/build_image.yml'
     tags:

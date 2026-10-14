@@ -12,11 +12,17 @@ RUN groupadd --gid "${GID}" smtp-relay \
 # Set the working directory in the container
 WORKDIR /usr/src/smtp-relay/
 
-# Copy the requirements file into the container at /usr/src/smtp-relay/
-COPY ./requirements.txt .
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /usr/local/bin/uv
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Install locked dependencies into /opt/venv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    PATH="/opt/venv/bin:$PATH"
+COPY ./pyproject.toml ./uv.lock ./
+RUN uv sync --frozen --no-dev
 
 # Copy the src contents into the container
 COPY ./src .
