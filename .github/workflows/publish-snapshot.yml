@@ -1,6 +1,6 @@
-name: Create and publish a Docker image
+name: Publish snapshot image
 
-run-name: "Build Docker image: ${{ github.sha }}"
+run-name: "Publish snapshot image: ${{ github.sha }}"
 
 on:
   workflow_dispatch:
@@ -11,9 +11,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'src/**'
-      - '.github/workflows/build_image.yml'
-    tags:
-      - 'v*.*.*'  # Matches semantic version tags like v1.0.0
+      - '.github/workflows/publish-snapshot.yml'
 
 env:
   REGISTRY: ghcr.io
@@ -49,11 +47,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=,format=short
-            type=semver,pattern={{major}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{version}}
-            # Only add 'latest' tag for releases or tags
-            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.ref_type == 'tag' }}
 
       # Set up Docker Buildx
       - name: Set up Docker Buildx
