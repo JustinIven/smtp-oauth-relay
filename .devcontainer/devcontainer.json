@@ -7,8 +7,7 @@
 	],
 
 	"postCreateCommand": {
-		"installUv": "pip3 install --user uv",
-		"installRequirements": "~/.local/bin/uv sync",
+		"installUv": "pip3 install --user uv && uv sync && uv run pre-commit install",
 		"createDevCerts": "mkdir -p certs && openssl req -x509 -newkey rsa:4096 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj '/CN=localhost'"
 	},
 	"features": {

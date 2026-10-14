@@ -13,6 +13,12 @@ dependencies = [
     "cryptography>=50.0.1",
 ]
 
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "ruff>=0.17.0",
+]
+
 [tool.uv]
 package = false
 

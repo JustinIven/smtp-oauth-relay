@@ -2,7 +2,7 @@
 
 For running directly on a host without containers.
 
-**Prerequisites:** Python 3.11+, `pip`, and OpenSSL (for test certificates).
+**Prerequisites:** Python 3.11+, [`uv`](https://docs.astral.sh/uv/), and OpenSSL (for test certificates).
 
 ## Steps
 
@@ -11,16 +11,12 @@ For running directly on a host without containers.
 git clone https://github.com/justiniven/smtp-oauth-relay.git
 cd smtp-oauth-relay
 
-# 2. Create a virtual environment
-python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+# 2. Install dependencies (creates .venv)
+uv sync --no-dev
 
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Run the server
+# 3. Run the server
 cd src
-TLS_SOURCE=file REQUIRE_TLS=true python main.py
+TLS_SOURCE=file REQUIRE_TLS=true uv run python main.py
 ```
 
 ### Generate a self-signed certificate (testing)
@@ -52,7 +48,7 @@ Environment="TLS_SOURCE=file"
 Environment="REQUIRE_TLS=true"
 Environment="TLS_CERT_FILEPATH=/opt/smtp-oauth-relay/certs/cert.pem"
 Environment="TLS_KEY_FILEPATH=/opt/smtp-oauth-relay/certs/key.pem"
-ExecStart=/opt/smtp-oauth-relay/venv/bin/python main.py
+ExecStart=/opt/smtp-oauth-relay/.venv/bin/python main.py
 Restart=on-failure
 RestartSec=5s
 
