@@ -1,7 +1,7 @@
 from typing import Any
 
-from azure.identity.aio import DefaultAzureCredential
 from azure.data.tables.aio import TableClient
+from azure.identity.aio import DefaultAzureCredential
 
 from env import AZURE_TABLES_PARTITION_KEY, AZURE_TABLES_URL
 
@@ -20,19 +20,25 @@ class AzureTableStore:
     recreating them on every query.
     """
 
-    def __init__(self, table_url: str | None = AZURE_TABLES_URL, partition_key: str = AZURE_TABLES_PARTITION_KEY):
+    def __init__(
+        self,
+        table_url: str | None = AZURE_TABLES_URL,
+        partition_key: str = AZURE_TABLES_PARTITION_KEY,
+    ):
         if not table_url:
             raise ValueError("AZURE_TABLES_URL environment variable not set")
         self._partition_key = partition_key
         self._credential = DefaultAzureCredential()
-        self._client = TableClient.from_table_url(table_url=table_url, credential=self._credential)  # pyright: ignore[reportArgumentType]
+        self._client = TableClient.from_table_url(
+            table_url=table_url, credential=self._credential
+        )
 
     async def close(self) -> None:
         """Release the underlying table client and credential."""
         await self._client.close()
         await self._credential.close()
 
-    async def lookup_user(self, lookup_id: str) -> tuple[str, str, str|None]:
+    async def lookup_user(self, lookup_id: str) -> tuple[str, str, str | None]:
         """
         Search in Azure Table for user information based on the lookup_id (RowKey).
         Returns (tenant_id, client_id, from_email) or raises ValueError if not found.
@@ -43,17 +49,19 @@ class AzureTableStore:
             )
             entity = await _first(entities)
         except Exception as e:
-            raise RuntimeError(f"Failed to query Azure Table: {str(e)}") from e
+            raise RuntimeError(f"Failed to query Azure Table: {e!s}") from e
 
         if not entity:
             raise ValueError(f"No entity found for RowKey '{lookup_id}'")
 
-        tenant_id = entity.get('tenant_id')
-        client_id = entity.get('client_id')
-        from_email = entity.get('from_email')
+        tenant_id = entity.get("tenant_id")
+        client_id = entity.get("client_id")
+        from_email = entity.get("from_email")
 
         if not tenant_id or not client_id:
-            raise ValueError(f"Entity for RowKey '{lookup_id}' is missing tenant_id or client_id")
+            raise ValueError(
+                f"Entity for RowKey '{lookup_id}' is missing tenant_id or client_id"
+            )
 
         return tenant_id, client_id, from_email
 
@@ -65,11 +73,11 @@ class AzureTableStore:
         try:
             entities = self._client.query_entities(
                 query_filter=f"PartitionKey eq '{self._partition_key}'",
-                results_per_page=1
+                results_per_page=1,
             )
             await _first(entities)
         except Exception as e:
-            raise RuntimeError(f"Failed to access Azure Table: {str(e)}") from e
+            raise RuntimeError(f"Failed to access Azure Table: {e!s}") from e
 
     async def verify_user_in_table(self, tenant_id: str, client_id: str) -> str | None:
         """
@@ -83,9 +91,11 @@ class AzureTableStore:
             )
             entity = await _first(entities)
         except Exception as e:
-            raise RuntimeError(f"Failed to query Azure Table: {str(e)}") from e
+            raise RuntimeError(f"Failed to query Azure Table: {e!s}") from e
 
         if not entity:
-            raise ValueError(f"Sender not authorized: no entry found for tenant_id '{tenant_id}' and client_id '{client_id}'")
+            raise ValueError(
+                f"Sender not authorized: no entry found for tenant_id '{tenant_id}' and client_id '{client_id}'"
+            )
 
-        return entity.get('from_email')
+        return entity.get("from_email")

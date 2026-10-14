@@ -38,8 +38,9 @@ The relay accepts each ID as either a standard hyphenated UUID (36 chars) or a *
 
     ```python
     import base64, uuid
-    u = uuid.UUID('12345678-1234-1234-1234-123456789abc')
-    print(base64.urlsafe_b64encode(u.bytes).decode().rstrip('='))
+
+    u = uuid.UUID("12345678-1234-1234-1234-123456789abc")
+    print(base64.urlsafe_b64encode(u.bytes).decode().rstrip("="))
     # -> EjRWeBI0EjQSNBI0VnirzQ
     ```
 
@@ -78,10 +79,11 @@ The relay detects `@lookup`, queries the table for `RowKey=app1`, and uses the s
 
     ```python
     import smtplib
-    with smtplib.SMTP('smtp.example.com', 8025) as s:
+
+    with smtplib.SMTP("smtp.example.com", 8025) as s:
         s.starttls()
-        s.login('tenant_id@client_id', 'client_secret')
-        print('OK')
+        s.login("tenant_id@client_id", "client_secret")
+        print("OK")
     ```
 
 === "swaks"

@@ -1,8 +1,11 @@
-from aiosmtpd.controller import UnthreadedController
-from aiosmtpd.smtp import SMTP, AuthResult, Session, TLSSetupException
-from typing import Any, List
 import inspect
 import logging
+from typing import Any
+
+from aiosmtpd.controller import UnthreadedController
+from aiosmtpd.smtp import SMTP, AuthResult, Session, TLSSetupException
+
+logger = logging.getLogger(__name__)
 
 
 class CustomController(UnthreadedController):
@@ -11,7 +14,7 @@ class CustomController(UnthreadedController):
 
 
 class CustomSMTP(SMTP):
-    AuthLoginUsernameChallenge = "Username:" # Some clients expect this format
+    AuthLoginUsernameChallenge = "Username:"  # Some clients expect this format
     AuthLoginPasswordChallenge = "Password:"
 
     # aiosmtpd invokes the authenticator synchronously, so an async authenticator's coroutine
@@ -22,18 +25,18 @@ class CustomSMTP(SMTP):
             return await result
         return result
 
-    async def auth_PLAIN(self, _: SMTP, args: List[str]) -> AuthResult:
+    async def auth_PLAIN(self, _: SMTP, args: list[str]) -> AuthResult:
         return await self._resolve_auth(await super().auth_PLAIN(_, args))
 
-    async def auth_LOGIN(self, _: SMTP, args: List[str]) -> AuthResult:
+    async def auth_LOGIN(self, _: SMTP, args: list[str]) -> AuthResult:
         return await self._resolve_auth(await super().auth_LOGIN(_, args))
 
     # Custom logic to handle AUTH commands which are in lowercase (bug in aio-libs/aiosmtpd#542)
-    async def smtp_AUTH(self, arg: str) -> None:    
+    async def smtp_AUTH(self, arg: str) -> None:
         args = arg.split()
         if len(args) == 2:
             args[0] = args[0].upper()
-            arg = ' '.join(args)
+            arg = " ".join(args)
         return await super().smtp_AUTH(arg)
 
     # Override STARTTLS to catch SSL handshake errors
@@ -42,12 +45,12 @@ class CustomSMTP(SMTP):
             return await super().smtp_STARTTLS(arg)
         except TLSSetupException:
             if self.tls_context:
-                logging.error(f"TLS handshake with client failed.")
+                logger.error("TLS handshake with client failed.")
 
-    
     def _create_session(self) -> Session:
         return CustomSession(self.loop)
-        
+
+
 # Custom Session class to remove deprecation warnings related to login_data attribute (bug in aio-libs/aiosmtpd#347)
 class CustomSession(Session):
     @property
