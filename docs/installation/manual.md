@@ -19,6 +19,10 @@ cd src
 TLS_SOURCE=file REQUIRE_TLS=true uv run python main.py
 ```
 
+!!! warning
+    Make sure to install the required dependencies after each update.
+    If upgrading from a version earlier than 1.7.1, use the new build system, `uv` instead of `pip`.
+
 ### Generate a self-signed certificate (testing)
 
 ```bash
