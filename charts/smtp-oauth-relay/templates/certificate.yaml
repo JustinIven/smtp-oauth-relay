@@ -1,0 +1,46 @@
+{{- if and (eq .Values.tls.source "file") .Values.tls.certManager.enabled }}
+{{- $cm := .Values.tls.certManager }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "smtp-oauth-relay.fullname" . }}
+  labels:
+    {{- include "smtp-oauth-relay.labels" . | nindent 4 }}
+  {{- with $cm.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  secretName: {{ include "smtp-oauth-relay.tlsSecretName" . }}
+  {{- with $cm.secretTemplate }}
+  secretTemplate:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  issuerRef:
+    name: {{ $cm.issuerRef.name }}
+    kind: {{ $cm.issuerRef.kind | default "ClusterIssuer" }}
+    group: {{ $cm.issuerRef.group | default "cert-manager.io" }}
+  {{- with $cm.commonName }}
+  commonName: {{ . | quote }}
+  {{- end }}
+  dnsNames:
+    {{- toYaml $cm.dnsNames | nindent 4 }}
+  {{- with $cm.ipAddresses }}
+  ipAddresses:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $cm.duration }}
+  duration: {{ . }}
+  {{- end }}
+  {{- with $cm.renewBefore }}
+  renewBefore: {{ . }}
+  {{- end }}
+  {{- with $cm.privateKey }}
+  privateKey:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+{{- end }}

@@ -31,6 +31,10 @@ jobs:
             echo "::error::tag v$tag_version does not match pyproject.toml version $project_version"
             exit 1
           fi
+          chart_version="$(sed -nE 's/^version: *"?([^"]*)"?/\1/p' charts/smtp-oauth-relay/Chart.yaml | head -n1)"
+          if [ "$tag_version" != "$chart_version" ]; then
+            echo "::warning::charts/smtp-oauth-relay/Chart.yaml version $chart_version differs from tag; the published chart uses $tag_version"
+          fi
 
   build-and-push:
     needs: check-version
@@ -81,8 +85,44 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  release:
+  publish-chart:
     needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4
+
+      - name: Package chart
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          helm package charts/smtp-oauth-relay --version "$version" --app-version "$version" --destination dist
+
+      - name: Push chart
+        id: push
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # OCI references must be lowercase
+          chart_repo="${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/charts"
+          echo "$REGISTRY_PASSWORD" | helm registry login "$REGISTRY" --username "$GITHUB_ACTOR" --password-stdin
+          helm push dist/smtp-oauth-relay-*.tgz "oci://${chart_repo}" 2>&1 | tee push.log
+          echo "subject=${chart_repo}/smtp-oauth-relay" >> "$GITHUB_OUTPUT"
+          echo "digest=$(sed -nE 's/^Digest: (sha256:[0-9a-f]+).*/\1/p' push.log)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.push.outputs.subject }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  release:
+    needs: [build-and-push, publish-chart]
     runs-on: ubuntu-latest
     permissions:
       contents: write

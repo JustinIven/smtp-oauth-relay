@@ -1,0 +1,16 @@
+tls:
+  source: keyvault
+azure:
+  keyVault:
+    url: https://my-keyvault.vault.azure.net/
+    certName: smtp-relay-cert
+  tables:
+    url: https://mystorage.table.core.windows.net/users
+    forceUsage: true
+azureWorkloadIdentity:
+  enabled: true
+  clientId: 00000000-0000-0000-0000-000000000000
+  tenantId: 11111111-1111-1111-1111-111111111111
+config:
+  logLevel: INFO
+  tlsCipherSuite: ECDHE+AESGCM

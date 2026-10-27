@@ -1,0 +1,165 @@
+# -- Number of relay replicas. The relay is stateless.
+replicaCount: 2
+
+image:
+  repository: ghcr.io/justiniven/smtp-oauth-relay
+  # -- Overrides the image tag. Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Relay configuration, rendered into a ConfigMap.
+# See https://justiniven.github.io/smtp-oauth-relay/configuration/
+config:
+  # -- DEBUG, INFO, WARNING, ERROR or CRITICAL. Avoid DEBUG in production.
+  logLevel: WARNING
+  # -- SMTP banner sent to clients.
+  serverGreeting: Microsoft Graph SMTP OAuth Relay
+  # -- Character separating tenant and client ID in the username: "@", ":" or "|".
+  usernameDelimiter: "@"
+  # -- Reject authentication before STARTTLS.
+  requireTls: true
+  # -- Timeout in seconds for HTTP requests to Microsoft.
+  graphHttpTimeout: 30
+  # -- Optional OpenSSL cipher string.
+  tlsCipherSuite: ""
+  # -- Seconds between checks for a renewed TLS certificate. 0 disables reloading.
+  tlsReloadInterval: 300
+
+azure:
+  keyVault:
+    # -- Key Vault URL holding the TLS certificate. Required when tls.source is keyvault.
+    url: ""
+    # -- Certificate name in Key Vault. Required when tls.source is keyvault.
+    certName: ""
+  tables:
+    # -- Azure Table URL for credential lookup. Leave empty to disable.
+    url: ""
+    # -- PartitionKey used when querying the table.
+    partitionKey: user
+    # -- Require every sender to exist in the table.
+    forceUsage: false
+
+tls:
+  # -- Where the relay loads its TLS certificate from: file, keyvault or off.
+  # With "file", enable exactly one of tls.certManager or tls.existingSecret.
+  source: file
+  # -- Directory the certificate secret is mounted at.
+  mountPath: /etc/smtp-relay/tls
+
+  # Issue the certificate with cert-manager (cert-manager must be installed).
+  certManager:
+    enabled: false
+    # -- Existing Issuer or ClusterIssuer to request the certificate from.
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+      group: cert-manager.io
+    commonName: ""
+    # -- DNS names clients use to reach the relay. At least one is required.
+    dnsNames: []
+    ipAddresses: []
+    duration: ""
+    renewBefore: ""
+    privateKey:
+      algorithm: RSA
+      size: 2048
+      rotationPolicy: Always
+    # -- Name of the generated secret. Defaults to "<fullname>-tls".
+    secretName: ""
+    # -- Labels and annotations added to the generated secret.
+    secretTemplate: {}
+    # -- Extra annotations on the Certificate resource.
+    annotations: {}
+
+  # Use an existing kubernetes.io/tls (or other) secret.
+  existingSecret:
+    name: ""
+    certKey: tls.crt
+    keyKey: tls.key
+
+serviceAccount:
+  # -- Create a ServiceAccount.
+  create: true
+  # -- ServiceAccount name. Defaults to the fullname when create is true, otherwise "default".
+  name: ""
+  annotations: {}
+  # -- Mount the Kubernetes API token. The relay does not need it.
+  automountServiceAccountToken: false
+
+# Azure Workload Identity (federated credentials) for Key Vault and Table access.
+# Requires the workload identity webhook in the cluster and a federated credential on
+# the managed identity / app registration for system:serviceaccount:<namespace>:<serviceAccountName>.
+azureWorkloadIdentity:
+  enabled: false
+  # -- Client ID of the user-assigned managed identity or app registration.
+  clientId: ""
+  # -- Optional tenant ID. Defaults to the cluster's tenant.
+  tenantId: ""
+
+service:
+  type: LoadBalancer
+  port: 8025
+  annotations: {}
+  labels: {}
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  # -- Set to Local to preserve client source IPs.
+  externalTrafficPolicy: ""
+  # -- Only used when type is NodePort or LoadBalancer.
+  nodePort: null
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+livenessProbe:
+  tcpSocket:
+    port: smtp
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+readinessProbe:
+  tcpSocket:
+    port: smtp
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+terminationGracePeriodSeconds: 30
+
+# -- Additional environment variables for the relay container.
+extraEnv: []
+# -- Additional envFrom sources for the relay container.
+extraEnvFrom: []
+# -- Additional volumes for the pod.
+extraVolumes: []
+# -- Additional volume mounts for the relay container.
+extraVolumeMounts: []

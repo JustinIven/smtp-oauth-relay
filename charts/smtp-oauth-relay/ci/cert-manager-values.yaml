@@ -1,0 +1,15 @@
+tls:
+  source: file
+  certManager:
+    enabled: true
+    issuerRef:
+      name: letsencrypt-prod
+      kind: ClusterIssuer
+    dnsNames:
+      - smtp.example.com
+    duration: 2160h
+    renewBefore: 360h
+service:
+  externalTrafficPolicy: Local
+  loadBalancerSourceRanges:
+    - 10.0.0.0/8

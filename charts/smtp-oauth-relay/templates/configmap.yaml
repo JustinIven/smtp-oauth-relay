@@ -1,0 +1,31 @@
+{{- include "smtp-oauth-relay.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "smtp-oauth-relay.fullname" . }}
+  labels:
+    {{- include "smtp-oauth-relay.labels" . | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  SERVER_GREETING: {{ .Values.config.serverGreeting | quote }}
+  USERNAME_DELIMITER: {{ .Values.config.usernameDelimiter | quote }}
+  REQUIRE_TLS: {{ .Values.config.requireTls | toString | quote }}
+  GRAPH_HTTP_TIMEOUT: {{ .Values.config.graphHttpTimeout | toString | quote }}
+  TLS_SOURCE: {{ .Values.tls.source | quote }}
+  TLS_RELOAD_INTERVAL: {{ .Values.config.tlsReloadInterval | int | toString | quote }}
+  {{- with .Values.config.tlsCipherSuite }}
+  TLS_CIPHER_SUITE: {{ . | quote }}
+  {{- end }}
+  {{- if eq .Values.tls.source "file" }}
+  TLS_CERT_FILEPATH: {{ printf "%s/%s" (trimSuffix "/" .Values.tls.mountPath) (include "smtp-oauth-relay.tlsCertKey" .) | quote }}
+  TLS_KEY_FILEPATH: {{ printf "%s/%s" (trimSuffix "/" .Values.tls.mountPath) (include "smtp-oauth-relay.tlsKeyKey" .) | quote }}
+  {{- end }}
+  {{- if eq .Values.tls.source "keyvault" }}
+  AZURE_KEY_VAULT_URL: {{ .Values.azure.keyVault.url | quote }}
+  AZURE_KEY_VAULT_CERT_NAME: {{ .Values.azure.keyVault.certName | quote }}
+  {{- end }}
+  {{- with .Values.azure.tables.url }}
+  AZURE_TABLES_URL: {{ . | quote }}
+  AZURE_TABLES_PARTITION_KEY: {{ $.Values.azure.tables.partitionKey | quote }}
+  {{- end }}
+  AZURE_TABLES_FORCE_USAGE: {{ .Values.azure.tables.forceUsage | toString | quote }}

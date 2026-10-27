@@ -6,7 +6,7 @@ Pick the deployment method that fits your environment. All methods run the same 
 |--------|----------|------------|
 | [Docker](docker.md) | Quick setup, small deployments | Low |
 | [Azure](azure.md) | Azure-native, one-click deploy | Low–Medium |
-| [Kubernetes](kubernetes.md) | Scalable production workloads | Medium |
+| [Kubernetes](kubernetes.md) | Scalable production workloads (Helm chart or manifests) | Medium |
 | [Manual](manual.md) | Full control, custom hosts | Medium |
 
 ## Requirements

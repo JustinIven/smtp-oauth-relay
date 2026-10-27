@@ -1,0 +1,10 @@
+tls:
+  source: "off"
+config:
+  requireTls: false
+  tlsReloadInterval: 0
+service:
+  type: NodePort
+  nodePort: 30025
+serviceAccount:
+  create: false

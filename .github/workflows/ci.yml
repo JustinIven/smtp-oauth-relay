@@ -28,3 +28,37 @@ jobs:
 
       - name: ruff format --check
         run: uv run ruff format --check
+
+  helm:
+    runs-on: ubuntu-latest
+    env:
+      CHART: charts/smtp-oauth-relay
+      KUBECONFORM_VERSION: v0.8.0
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: helm lint
+        run: |
+          for values in "$CHART"/ci/*.yaml; do
+            echo "::group::helm lint ($values)"
+            helm lint "$CHART" --strict --values "$values"
+            echo "::endgroup::"
+          done
+
+      - name: helm template | kubeconform
+        run: |
+          for values in "$CHART"/ci/*.yaml; do
+            echo "::group::kubeconform ($values)"
+            helm template smtp-relay "$CHART" --namespace smtp-relay --values "$values" \
+              | kubeconform -strict -summary \
+                  -schema-location default \
+                  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+            echo "::endgroup::"
+          done

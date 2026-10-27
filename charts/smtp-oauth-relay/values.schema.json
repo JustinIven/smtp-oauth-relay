@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 0 },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": { "type": "array" },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "config": {
+      "type": "object",
+      "properties": {
+        "logLevel": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "debug", "info", "warning", "error", "critical"]
+        },
+        "serverGreeting": { "type": "string" },
+        "usernameDelimiter": { "type": "string", "enum": ["@", ":", "|"] },
+        "requireTls": { "type": "boolean" },
+        "graphHttpTimeout": { "type": "number", "exclusiveMinimum": 0 },
+        "tlsCipherSuite": { "type": "string" },
+        "tlsReloadInterval": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "azure": {
+      "type": "object",
+      "properties": {
+        "keyVault": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "certName": { "type": "string" }
+          }
+        },
+        "tables": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "partitionKey": { "type": "string", "minLength": 1 },
+            "forceUsage": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "Quote \"off\" in YAML, otherwise it is parsed as a boolean.",
+          "type": "string",
+          "enum": ["file", "keyvault", "off"]
+        },
+        "mountPath": { "type": "string", "pattern": "^/" },
+        "certManager": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "issuerRef": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "kind": { "type": "string" },
+                "group": { "type": "string" }
+              }
+            },
+            "commonName": { "type": "string" },
+            "dnsNames": { "type": "array", "items": { "type": "string" } },
+            "ipAddresses": { "type": "array", "items": { "type": "string" } },
+            "duration": { "type": "string" },
+            "renewBefore": { "type": "string" },
+            "privateKey": { "type": "object" },
+            "secretName": { "type": "string" },
+            "secretTemplate": { "type": "object" },
+            "annotations": { "type": "object" }
+          }
+        },
+        "existingSecret": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "certKey": { "type": "string", "minLength": 1 },
+            "keyKey": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" },
+        "automountServiceAccountToken": { "type": "boolean" }
+      }
+    },
+    "azureWorkloadIdentity": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "clientId": { "type": "string" },
+        "tenantId": { "type": "string" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "annotations": { "type": "object" },
+        "labels": { "type": "object" },
+        "loadBalancerIP": { "type": "string" },
+        "loadBalancerSourceRanges": { "type": "array", "items": { "type": "string" } },
+        "externalTrafficPolicy": { "type": "string", "enum": ["", "Cluster", "Local"] },
+        "nodePort": { "type": ["integer", "null"] }
+      }
+    },
+    "podAnnotations": { "type": "object" },
+    "podLabels": { "type": "object" },
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" },
+    "resources": { "type": "object" },
+    "livenessProbe": { "type": "object" },
+    "readinessProbe": { "type": "object" },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object" },
+    "priorityClassName": { "type": "string" },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
+    "extraEnv": { "type": "array" },
+    "extraEnvFrom": { "type": "array" },
+    "extraVolumes": { "type": "array" },
+    "extraVolumeMounts": { "type": "array" }
+  }
+}

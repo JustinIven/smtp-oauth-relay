@@ -1,0 +1,39 @@
+SMTP OAuth Relay {{ include "smtp-oauth-relay.imageTag" . }} has been deployed as {{ include "smtp-oauth-relay.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+{{- if eq .Values.service.type "LoadBalancer" }}
+
+Get the external address (it may take a few minutes to be assigned):
+
+  kubectl get svc --namespace {{ .Release.Namespace }} {{ include "smtp-oauth-relay.fullname" . }} -w
+
+Clients connect to <EXTERNAL-IP>:{{ .Values.service.port }} using STARTTLS.
+{{- else }}
+
+Test locally with a port-forward:
+
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "smtp-oauth-relay.fullname" . }} 8025:{{ .Values.service.port }}
+{{- end }}
+
+TLS source: {{ .Values.tls.source }}
+{{- if and (eq .Values.tls.source "file") .Values.tls.certManager.enabled }}
+  Certificate issued by {{ .Values.tls.certManager.issuerRef.kind }}/{{ .Values.tls.certManager.issuerRef.name }} into secret {{ include "smtp-oauth-relay.tlsSecretName" . }}.
+  Pods stay in ContainerCreating until cert-manager has issued it:
+    kubectl get certificate --namespace {{ .Release.Namespace }} {{ include "smtp-oauth-relay.fullname" . }}
+{{- else if eq .Values.tls.source "file" }}
+  Using existing secret {{ .Values.tls.existingSecret.name }}.
+{{- else if eq .Values.tls.source "off" }}
+  WARNING: TLS is disabled. Credentials are sent in clear text. Use only for development.
+{{- end }}
+{{- if and (ne .Values.tls.source "off") (gt (int .Values.config.tlsReloadInterval) 0) }}
+  Renewed certificates are picked up automatically within {{ .Values.config.tlsReloadInterval }} seconds.
+{{- end }}
+{{- if .Values.azureWorkloadIdentity.enabled }}
+
+Azure Workload Identity is enabled for service account {{ include "smtp-oauth-relay.serviceAccountName" . }}.
+Ensure a federated credential exists on client ID {{ .Values.azureWorkloadIdentity.clientId }} with subject:
+  system:serviceaccount:{{ .Release.Namespace }}:{{ include "smtp-oauth-relay.serviceAccountName" . }}
+{{- if not .Values.serviceAccount.create }}
+serviceAccount.create is false: annotate the existing service account with
+  azure.workload.identity/client-id: {{ .Values.azureWorkloadIdentity.clientId }}
+{{- end }}
+{{- end }}

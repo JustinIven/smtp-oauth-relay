@@ -83,7 +83,7 @@ swaks --server relay.example.com:8025 \
 
 ## Documentation
 
-- [Installation](docs/installation/index.md) — Docker, Azure, Kubernetes, manual
+- [Installation](docs/installation/index.md) — Docker, Azure, Kubernetes (Helm chart), manual
 - [Entra ID setup](docs/entra-id-setup/index.md) — app registration and sender restrictions
 - [Configuration](docs/configuration.md) — environment variable reference
 - [Client setup](docs/client-setup.md) — printers, NAS, firewalls, apps
