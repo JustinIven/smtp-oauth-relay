@@ -20,6 +20,10 @@ All configuration is via environment variables. Defaults are safe for a TLS-enab
 | `TLS_CERT_FILEPATH` | `certs/cert.pem` | `TLS_SOURCE=file` | PEM certificate path. |
 | `TLS_KEY_FILEPATH` | `certs/key.pem` | `TLS_SOURCE=file` | PEM private key path. |
 | `TLS_CIPHER_SUITE` | system default | — | [OpenSSL cipher string](https://docs.openssl.org/3.0/man1/openssl-ciphers/#cipher-list-format); see [Mozilla cipher list](https://wiki.mozilla.org/Security/Cipher_Suites). Active ciphers are logged at startup. TLS 1.3 suites cannot be changed. |
+| `TLS_RELOAD_INTERVAL` | `300` | — | Seconds between checks for a renewed certificate (file contents or new Key Vault version). `0` disables reloading. |
+
+!!! tip "Certificate renewal"
+    The relay checks the certificate every `TLS_RELOAD_INTERVAL` seconds and switches to a renewed certificate without a restart. New connections use the new certificate, and open connections are unaffected. If the new certificate or key is invalid, the relay logs an error and keeps serving the current one. This works with cert-manager, mounted Kubernetes secrets, certbot renewals, and new Key Vault certificate versions.
 
 ## Azure integration (optional)
 

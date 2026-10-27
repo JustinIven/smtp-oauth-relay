@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import sys
 from email import message_from_bytes
@@ -19,6 +20,7 @@ from env import (
     TLS_CERT_FILEPATH,
     TLS_CIPHER_SUITE,
     TLS_KEY_FILEPATH,
+    TLS_RELOAD_INTERVAL,
     TLS_SOURCE,
 )
 from graph import GraphClient, close_http_session, start_http_session
@@ -201,11 +203,12 @@ class Handler:
 
 
 # noinspection PyShadowingNames
-async def amain(loop):
+def create_certificate_source():
     match TLS_SOURCE:
         case "file":
-            context = sslContext.from_file(TLS_CERT_FILEPATH, TLS_KEY_FILEPATH)
-            logger.info(f"Loaded certificate from file: {TLS_CERT_FILEPATH}")
+            return sslContext.FileCertificateSource(
+                TLS_CERT_FILEPATH, TLS_KEY_FILEPATH, TLS_CIPHER_SUITE
+            )
 
         case "keyvault":
             if not AZURE_KEY_VAULT_URL or not AZURE_KEY_VAULT_CERT_NAME:
@@ -213,25 +216,58 @@ async def amain(loop):
                     "Azure Key Vault URL and Certificate Name must be set when TLS_SOURCE is 'keyvault'"
                 )
                 raise ValueError("Azure Key Vault URL and Certificate Name must be set")
-            context = sslContext.from_keyvault(
-                AZURE_KEY_VAULT_URL, AZURE_KEY_VAULT_CERT_NAME
-            )
-            logger.info(
-                f"Loaded certificate from Azure Key Vault: {AZURE_KEY_VAULT_CERT_NAME}"
+            return sslContext.KeyVaultCertificateSource(
+                AZURE_KEY_VAULT_URL, AZURE_KEY_VAULT_CERT_NAME, TLS_CIPHER_SUITE
             )
 
         case "off":
-            context = None
+            return None
 
         case _:
             logger.error(f"Invalid TLS_SOURCE: {TLS_SOURCE}")
             raise ValueError(f"Invalid TLS_SOURCE: {TLS_SOURCE}")
 
-    # Configure TLS cipher suite if specified
-    if context:
-        if TLS_CIPHER_SUITE:
-            context.set_ciphers(TLS_CIPHER_SUITE)
 
+async def reload_tls_context(controller, source, fingerprint, interval):
+    """
+    Periodically check the certificate source and swap in a new TLS context when it
+    changes. aiosmtpd creates an SMTP instance per connection from SMTP_kwargs, so only
+    new connections use the new context. On failure the current context is kept.
+    """
+    failed_fingerprint = None
+    while True:
+        await asyncio.sleep(interval)
+        new_fingerprint = None
+        try:
+            new_fingerprint = await asyncio.to_thread(source.fingerprint)
+            if new_fingerprint == fingerprint:
+                continue
+            context = await asyncio.to_thread(source.load)
+        except Exception as e:
+            message = f"Failed to reload TLS certificate from {source}; keeping the current certificate"
+            # Avoid a traceback on every check while the same broken certificate is in place
+            if new_fingerprint is not None and new_fingerprint == failed_fingerprint:
+                logger.warning(f"{message}: {e!s}")
+            else:
+                logger.exception(message)
+            failed_fingerprint = new_fingerprint
+            continue
+        failed_fingerprint = None
+        controller.SMTP_kwargs["tls_context"] = context
+        fingerprint = new_fingerprint
+        logger.info(f"Reloaded TLS certificate from {source}")
+
+
+# noinspection PyShadowingNames
+async def amain(loop):
+    source = create_certificate_source()
+    context = None
+    fingerprint = None
+    if source is not None:
+        # Fingerprint before loading so a change during startup is picked up by the next check
+        fingerprint = source.fingerprint()
+        context = source.load()
+        logger.info(f"Loaded certificate from {source}")
         logger.info(
             f"TLS cipher suites used: {', '.join([i['name'] for i in context.get_ciphers()])}"
         )
@@ -251,7 +287,7 @@ async def amain(loop):
     # Share a single HTTP session, created on the loop that serves SMTP
     await start_http_session()
 
-    return CustomController(
+    controller = CustomController(
         Handler(),
         hostname="",  # bind dual-stack on all interfaces
         port=8025,
@@ -262,10 +298,25 @@ async def amain(loop):
         auth_require_tls=REQUIRE_TLS,
         require_starttls=REQUIRE_TLS,
         tls_context=context,
-    ), table_store
+    )
+
+    reload_task = None
+    if source is not None and TLS_RELOAD_INTERVAL > 0:
+        reload_task = loop.create_task(
+            reload_tls_context(controller, source, fingerprint, TLS_RELOAD_INTERVAL)
+        )
+        logger.info(
+            f"Checking TLS certificate for changes every {TLS_RELOAD_INTERVAL} seconds"
+        )
+
+    return controller, table_store, reload_task
 
 
-async def ashutdown(controller, table_store):
+async def ashutdown(controller, table_store, reload_task):
+    if reload_task is not None:
+        reload_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reload_task
     if controller is not None and controller.server is not None:
         await controller.finalize()
     await close_http_session()
@@ -285,9 +336,10 @@ if __name__ == "__main__":
 
     controller = None
     table_store = None
+    reload_task = None
     exit_code = 0
     try:
-        controller, table_store = loop.run_until_complete(amain(loop))
+        controller, table_store, reload_task = loop.run_until_complete(amain(loop))
         # begin() drives the loop itself, so it has to run before run_forever()
         controller.begin()
         logger.info("SMTP OAuth relay server started on port 8025")
@@ -299,7 +351,7 @@ if __name__ == "__main__":
         exit_code = 1
     finally:
         logger.info("Shutting down...")
-        loop.run_until_complete(ashutdown(controller, table_store))
+        loop.run_until_complete(ashutdown(controller, table_store, reload_task))
         for task in asyncio.all_tasks(loop):
             task.cancel()
         loop.close()

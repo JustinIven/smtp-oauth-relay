@@ -11,6 +11,16 @@ def load_env(
     return convert(value)
 
 
+def _non_negative_int(name, value):
+    try:
+        number = int(value)
+    except ValueError:
+        raise ValueError(f"Invalid {name}: {value}") from None
+    if number < 0:
+        raise ValueError(f"Invalid {name}: {value}")
+    return number
+
+
 # Configuration
 LOG_LEVEL = load_env(
     name="LOG_LEVEL",
@@ -39,6 +49,12 @@ TLS_KEY_FILEPATH = load_env(name="TLS_KEY_FILEPATH", default="certs/key.pem")
 TLS_CIPHER_SUITE = load_env(
     name="TLS_CIPHER_SUITE",
     default=None,  # Make it optional
+)
+TLS_RELOAD_INTERVAL = load_env(
+    name="TLS_RELOAD_INTERVAL",
+    default="300",
+    sanitize=lambda x: x.strip(),
+    convert=lambda x: _non_negative_int("TLS_RELOAD_INTERVAL", x),
 )
 USERNAME_DELIMITER = load_env(
     name="USERNAME_DELIMITER", default="@", valid_values=["@", ":", "|"]

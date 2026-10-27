@@ -9,7 +9,7 @@ The relay translates SMTP into Microsoft Graph calls, handling OAuth transparent
 | **SMTP server** ([aiosmtpd](https://aiosmtpd.readthedocs.io/)) | Listen on `8025`, handle SMTP commands, enforce STARTTLS | `src/custom.py` |
 | **Authenticator** | Parse username (UUID/base64url/lookup), obtain OAuth token | `Authenticator` in `src/main.py` |
 | **Handler** | Parse the message, apply From override, POST to Graph `sendMail` | `Handler` in `src/main.py` |
-| **SSL context** | Load TLS certificates from file or Key Vault | `src/sslContext.py` |
+| **SSL context** | Load TLS certificates from file or Key Vault and reload them when renewed | `src/sslContext.py` |
 | **Config loader** | Read and validate environment variables | `src/env.py` |
 
 `CustomSMTP`/`CustomController` work around an aiosmtpd issue with lowercase `AUTH` commands.
