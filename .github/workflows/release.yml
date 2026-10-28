@@ -115,12 +115,6 @@ jobs:
           echo "subject=${chart_repo}/smtp-oauth-relay" >> "$GITHUB_OUTPUT"
           echo "digest=$(sed -nE 's/^Digest: (sha256:[0-9a-f]+).*/\1/p' push.log)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/attest@v4
-        with:
-          subject-name: ${{ steps.push.outputs.subject }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
   release:
     needs: [build-and-push, publish-chart]
     runs-on: ubuntu-latest
