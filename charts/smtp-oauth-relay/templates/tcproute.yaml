@@ -1,0 +1,24 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: TCPRoute
+metadata:
+  name: {{ include "smtp-oauth-relay.fullname" . }}
+  labels:
+    {{- include "smtp-oauth-relay.labels" . | nindent 4 }}
+  {{- with .Values.gateway.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: {{ include "smtp-oauth-relay.fullname" . }}
+      sectionName: {{ .Values.gateway.listener.name }}
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "smtp-oauth-relay.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

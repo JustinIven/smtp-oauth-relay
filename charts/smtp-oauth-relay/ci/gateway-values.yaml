@@ -1,0 +1,16 @@
+tls:
+  source: file
+  certManager:
+    enabled: true
+    issuerRef:
+      name: letsencrypt-prod
+      kind: ClusterIssuer
+    dnsNames:
+      - smtp.example.com
+service:
+  type: ClusterIP
+gateway:
+  enabled: true
+  parentRef:
+    name: agentgateway-proxy
+    namespace: agentgateway-system

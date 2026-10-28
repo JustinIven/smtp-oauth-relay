@@ -112,6 +112,24 @@ service:
   # -- Only used when type is NodePort or LoadBalancer.
   nodePort: null
 
+# Expose the relay through a Gateway API gateway as plain TCP (STARTTLS is handled by
+# the relay itself). Creates a ListenerSet and a TCPRoute; the Gateway must allow
+# ListenerSets from this namespace, and the Gateway API CRDs (ListenerSet, TCPRoute)
+# must be installed. Combine with service.type ClusterIP.
+gateway:
+  enabled: false
+  parentRef:
+    # -- Name of the Gateway to attach the listener to. Required when enabled.
+    name: ""
+    # -- Namespace of the Gateway. Defaults to the release namespace.
+    namespace: ""
+  listener:
+    name: smtp
+    # -- Port opened on the Gateway for SMTP clients.
+    port: 8025
+  # -- Annotations added to the ListenerSet and TCPRoute.
+  annotations: {}
+
 podAnnotations: {}
 podLabels: {}
 

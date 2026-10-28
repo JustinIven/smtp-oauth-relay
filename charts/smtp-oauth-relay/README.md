@@ -106,6 +106,10 @@ More combinations are in [`ci/`](ci/).
 | `service.loadBalancerSourceRanges` | `[]` | Allowed client CIDRs. |
 | `service.externalTrafficPolicy` | `""` | `Local` preserves client source IPs. |
 | `service.nodePort` | `null` | Fixed node port. |
+| `gateway.enabled` | `false` | Expose the relay via Gateway API: creates a `ListenerSet` (TCP) and a `TCPRoute`. Requires the Gateway API CRDs and a Gateway that allows ListenerSets. Use with `service.type: ClusterIP`. |
+| `gateway.parentRef.name` / `namespace` | `""` | Gateway to attach to (name required; namespace defaults to the release namespace). |
+| `gateway.listener.name` / `port` | `smtp` / `8025` | Listener name and the port opened on the Gateway. |
+| `gateway.annotations` | `{}` | Annotations on the `ListenerSet` and `TCPRoute`. |
 | `podAnnotations` / `podLabels` | `{}` | Extra pod metadata. |
 | `podSecurityContext` | UID/GID `10001`, `runAsNonRoot`, `RuntimeDefault` seccomp | Pod security context. |
 | `securityContext` | read-only root FS, no privilege escalation, drop `ALL` | Container security context. |

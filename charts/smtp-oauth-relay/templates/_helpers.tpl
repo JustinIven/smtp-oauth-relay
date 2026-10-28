@@ -96,6 +96,9 @@ Validate value combinations that the schema cannot express.
 {{- if and (ne $tls.source "file") (or $tls.certManager.enabled $tls.existingSecret.name) }}
 {{- fail "tls.certManager and tls.existingSecret are only used with tls.source=file" }}
 {{- end }}
+{{- if and .Values.gateway.enabled (not .Values.gateway.parentRef.name) }}
+{{- fail "gateway.parentRef.name is required when gateway.enabled=true" }}
+{{- end }}
 {{- if and .Values.azure.tables.forceUsage (not .Values.azure.tables.url) }}
 {{- fail "azure.tables.forceUsage requires azure.tables.url" }}
 {{- end }}
