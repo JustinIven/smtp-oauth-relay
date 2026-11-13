@@ -5,6 +5,8 @@ import os
 import ssl
 from tempfile import TemporaryDirectory
 
+from cryptography.exceptions import InvalidSignature
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,6 +16,43 @@ def _create_context(cert_filepath, key_filepath, cipher_suite=None):
     if cipher_suite:
         context.set_ciphers(cipher_suite)
     return context
+
+
+def _is_issued_by(certificate, candidate):
+    """True if the name matches and the signature verifies with the candidate's key."""
+    try:
+        certificate.verify_directly_issued_by(candidate)
+    except (ValueError, TypeError, InvalidSignature):
+        return False
+    return True
+
+
+def _build_chain(certificate, additional_certificates):
+    """
+    Returns the intermediates that chain from the leaf, in issuer order.
+    The PKCS#12 collection is not guaranteed to be ordered, so the chain is
+    followed by verifying signatures, which also disambiguates certificates
+    sharing a subject (e.g. cross-signed intermediates). Self-signed roots
+    and unrelated certificates are omitted.
+    """
+    remaining = list(additional_certificates or [])
+    chain = []
+    current = certificate
+    while True:
+        issuer = next(
+            (
+                c
+                for c in remaining
+                if _is_issued_by(current, c) and not _is_issued_by(c, c)
+            ),
+            None,
+        )
+        if issuer is None:
+            break
+        remaining.remove(issuer)
+        chain.append(issuer)
+        current = issuer
+    return chain
 
 
 class FileCertificateSource:
@@ -107,8 +146,8 @@ class KeyVaultCertificateSource:
         cert_data = base64.b64decode(self._get_secret().value)
         # Load the certificate and key from the PKCS#12 data
         try:
-            private_key, certificate, _ = pkcs12.load_key_and_certificates(
-                cert_data, None
+            private_key, certificate, additional_certificates = (
+                pkcs12.load_key_and_certificates(cert_data, None)
             )
         except Exception as e:
             logger.error(f"Failed to load PKCS#12 data: {e!s}")
@@ -127,6 +166,12 @@ class KeyVaultCertificateSource:
             key_filepath = os.path.join(tmpdir, "key.pem")
             with open(cert_filepath, "wb") as cert_file:
                 cert_file.write(certificate.public_bytes(Encoding.PEM))
+                cert_file.writelines(
+                    intermediate.public_bytes(Encoding.PEM)
+                    for intermediate in _build_chain(
+                        certificate, additional_certificates
+                    )
+                )
             with open(
                 os.open(key_filepath, os.O_WRONLY | os.O_CREAT, 0o600), "wb"
             ) as key_file:
