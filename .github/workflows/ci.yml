@@ -29,6 +29,9 @@ jobs:
       - name: ruff format --check
         run: uv run ruff format --check
 
+      - name: pytest
+        run: uv run pytest
+
   helm:
     runs-on: ubuntu-latest
     env:

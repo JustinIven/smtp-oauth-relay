@@ -16,6 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.7.0",
+    "pytest>=8.0.0",
     "ruff>=0.17.0",
 ]
 
@@ -24,3 +25,7 @@ package = false
 
 [tool.ruff]
 src = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
